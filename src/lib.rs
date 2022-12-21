@@ -23,5 +23,7 @@ mod tests {
         ch02_basic_programming::my_func10();
         ch02_basic_programming::my_func11();
         ch02_basic_programming::my_func12();
+
+        ch03_synchronous_processing01::compare_and_swap2();
     }
 }

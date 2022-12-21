@@ -10,7 +10,7 @@
 // 비교 학습함으로써 Rust의 선진적인 동기 처리 기법을 깊이 이해해보자. 그리고 아토믹 명령에 의존하지 않는 알고리즘인
 // bakery algorithm에 대해서도 살펴보자.
 // *NOTE_ Rust의 동기 처리 lib은 내부적으로 Pthreads를 사용함. 그러므로 동시성 프로그래밍의 구조를 이해하기 위해
-// 먼저 C의 Pthread부터 보고 가자.
+// 먼저 C의 Pthread부터 숙지하는 것이 좋다.
 // 여기에서 말할 스레드나 OS 프로세스들은 모두 프로세스라고 표현될 예정. OS에 한정하지 않을 것이기 때문. 실제로
 // 여기의 아토믹 명령이나 spinlock은 스레드나 OS 프로세스 뿐 아니라 커널 공간에도 적용됨.
 
@@ -58,6 +58,41 @@ fn compare_and_swap(mut p: u64, val: u64, newval: u64) -> bool {
     true
 }
 // 이 프로그램은 아토믹하다고 할 수 없음. 실제로 2행의 p != val은 4행의 p = newval과 별도로 실행됨. 위 함수가
-// C로 구현되었다면(rust에선 어떨지 모름) C 컴파일러에서 어셈블리 코드(x86-64, System V x86-64 ABI)로 컴파일된
-// 결과를 살펴보면,
+// 컴파일되어 어셈블리 레벨에서도 여러 조작을 조합해 구현됨. rust에도 이와 같은 조작을 아토믹으로 처리하기 위한 내장함수인
+// compare_and_swap() 함수가 있음.
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+pub fn compare_and_swap2() {
+    let some_var = AtomicUsize::new(5);
+
+    assert_eq!(some_var.compare_and_swap(5, 10, Ordering::Relaxed), 5);
+    assert_eq!(some_var.load(Ordering::Relaxed), 10);
+
+    assert_eq!(some_var.compare_and_swap(6, 12, Ordering::Relaxed), 10);
+    assert_eq!(some_var.load(Ordering::Relaxed), 10);
+
+    assert_eq!(some_var.compare_and_swap(99, 100, Ordering::Relaxed), 10);
+    assert_eq!(some_var.load(Ordering::Relaxed), 10);
+}
+// compare_and_swap() 연산은 특정 메모리위치의 값이 주어진 값과 동일하다면 해당 메모리 주소를 새로운 값으로 대체함.
+// 이 연산은 atomic이기 때문에 새로운 값이 최신의 정보임을 보장한다. 만약 값 비교 와중에 다른 스레드에서 그 값이
+// 업데이트 되면 쓰기는 실패한다. 연산의 결과는 쓰기가 제대로 이루어졌는지를 나타낸다. 간단히 bool을 리턴하기도
+// 하고(compare-and-set), 메모리 위치에서 읽은 값(쓰인 값이 아님)을 리턴하기도 한다.
+
+
+// 3.2.2 Test and Set
+fn test_and_set(mut p: bool) -> bool {
+    if p {
+        return true
+    } else {
+        p = true;
+        return false
+    }
+}
+// 이 함수는 p의 값이 true면 true를 그대로 반환하고, false면 p의 값을 true로 설정하고 false로 반환한다. TAS도
+// CAS와 마찬가지로 아토믹 처리의 하나이며, 값의 비교와 대입이 아토믹하게 실행되며 스핀락 등을 구현하기 위해 이용된다.
+// *spin-lock? 이름 그대로 만약 다른 스레드가 lock을 소유하고 있다면 그 lock이 반환될 때까지 계속 확인하며 기다리는 것이다.
+// '조금만 기다리면 바로 쓸 수 있는데 굳이 Context Switching으로 부하를 줄 필요가 있나?'라는 컨셉으로 개발된 것으로
+// Critical Section에 진입이 불가능할 때 컨텍스트 스위칭을 하지 않고 잠시 루프를 돌면서 재시도를 하는것을 말함.
+// http://itnovice1.blogspot.com/2019/09/spin-lock.html
 //
