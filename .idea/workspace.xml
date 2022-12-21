@@ -10,43 +10,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="74a9b0f8-656d-49d7-b93a-58a2f3b2a3aa" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ch01_concurrency_and_parallelism.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ch01_concurrency_and_parallelism.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ch02_basic_programming.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ch02_basic_programming.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/.rustc_info.json" beforeDir="false" afterPath="$PROJECT_DIR$/target/.rustc_info.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/.fingerprint/concurrent_programming-f6325d7093f022b9/dep-lib-concurrent_programming" beforeDir="false" afterPath="$PROJECT_DIR$/target/debug/.fingerprint/concurrent_programming-f6325d7093f022b9/dep-lib-concurrent_programming" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/.fingerprint/concurrent_programming-f6325d7093f022b9/output-lib-concurrent_programming" beforeDir="false" afterPath="$PROJECT_DIR$/target/debug/.fingerprint/concurrent_programming-f6325d7093f022b9/output-lib-concurrent_programming" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/.fingerprint/concurrent_programming-f98316da7c6f6fd8/dep-test-lib-concurrent_programming" beforeDir="false" afterPath="$PROJECT_DIR$/target/debug/.fingerprint/concurrent_programming-f98316da7c6f6fd8/dep-test-lib-concurrent_programming" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/deps/concurrent_programming-f6325d7093f022b9.d" beforeDir="false" afterPath="$PROJECT_DIR$/target/debug/deps/concurrent_programming-f6325d7093f022b9.d" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/deps/concurrent_programming-f98316da7c6f6fd8" beforeDir="false" afterPath="$PROJECT_DIR$/target/debug/deps/concurrent_programming-f98316da7c6f6fd8" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/deps/concurrent_programming-f98316da7c6f6fd8.d" beforeDir="false" afterPath="$PROJECT_DIR$/target/debug/deps/concurrent_programming-f98316da7c6f6fd8.d" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/deps/libconcurrent_programming-f6325d7093f022b9.rlib" beforeDir="false" afterPath="$PROJECT_DIR$/target/debug/deps/libconcurrent_programming-f6325d7093f022b9.rlib" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/deps/libconcurrent_programming-f6325d7093f022b9.rmeta" beforeDir="false" afterPath="$PROJECT_DIR$/target/debug/deps/libconcurrent_programming-f6325d7093f022b9.rmeta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-39inmzfkzp5d3/s-ggh6t7emal-hbvn91-2gv6ovt2q4bhl/dep-graph.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-39inmzfkzp5d3/s-ggh6t7emal-hbvn91-2gv6ovt2q4bhl/query-cache.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-39inmzfkzp5d3/s-ggh6t7emal-hbvn91-2gv6ovt2q4bhl/sgybgweq54s8h7d.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-39inmzfkzp5d3/s-ggh6t7emal-hbvn91-2gv6ovt2q4bhl/work-products.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-39inmzfkzp5d3/s-ggh6t7emal-hbvn91.lock" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/13uttaybzv6vqyxe.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/1k8br6eysyyjikbd.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/228txj6ates7co1g.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/24r2zsta41kouq3w.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/2dmuow2kl8tz1bnq.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/2i1q7e9vn8diwoba.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/2wyy5ynoqhbzmq75.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/332pd1yp9g66hw95.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/37npg1vburxplcq6.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/44qbthsbjrmwb8mq.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/4khhsaukrsvlboi6.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/4p82yet1thsp61ye.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/a215xktaqa1xdz0.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/a77lf9qgtclc5f7.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/azuuf9qng6iy5xc.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/dep-graph.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/lu4emhqjswc820w.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/query-cache.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/sbjfgtgr3s0i1jt.o" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i-2fhj7g846josd/work-products.bin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/debug/incremental/concurrent_programming-3i65ornqv5r5a/s-ggh6t7ekt5-1p8r49i.lock" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -88,6 +56,7 @@
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="nodejs_package_manager_path" value="npm" />
     <property name="org.rust.cargo.project.model.PROJECT_DISCOVERY" value="true" />
+    <property name="settings.editor.selected.configurable" value="project.propVCSSupport.DirectoryMappings" />
   </component>
   <component name="RustProjectSettings">
     <option name="toolchainHomeDirectory" value="$PROJECT_DIR$/../../../.cargo/bin" />
@@ -103,11 +72,18 @@
       <updated>1671442265967</updated>
       <workItem from="1671442267170" duration="11595000" />
       <workItem from="1671515886997" duration="22080000" />
-      <workItem from="1671552347430" duration="1049000" />
+      <workItem from="1671552347430" duration="3153000" />
+      <workItem from="1671587415071" duration="97000" />
+      <workItem from="1671597435903" duration="12384000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <ignored-roots>
+      <path value="$PROJECT_DIR$/concurrent_programming" />
+    </ignored-roots>
   </component>
 </project>

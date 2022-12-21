@@ -17,6 +17,10 @@ mod tests {
         ch02_basic_programming::fun3();
         ch02_basic_programming::my_func3();
         ch02_basic_programming::my_func4();
+        ch02_basic_programming::my_func8();
+        ch02_basic_programming::my_func9();
+        ch02_basic_programming::my_func10();
+        ch02_basic_programming::my_func11();
+        ch02_basic_programming::my_func12();
     }
-
 }

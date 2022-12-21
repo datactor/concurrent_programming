@@ -1,7 +1,8 @@
 // 2.1 어셈블리 언어
 // 어셈블리?? 왜? 어셈블리를 알면 concurrency programming의 원리를 알 수 있고 컴퓨터의 본질을 이해할 수 있게됨.
 // AArch64(Arm의 64bit 아키텍처), x86-64(AMD, Intel의 CPU 아키텍처)로 간단하게 학습해보자.
-
+//
+//
 // 2.1.1 어셈블리 언어 기본
 // 우리가 일반적으로 보는 수식 너무 당연하게 여겨지지만 중위 표기법(infix notation)으로 연산자를 중간에 둠.
 // 반면 어셈블리 언어에서는 연산자를 맨 앞에 둠.
@@ -26,7 +27,8 @@
 // ldr x0, [x1] ; [x1]의 메모리 값을 x0에 읽는다. ldr? load 메모리 읽기 in AArch64
 // str x0, [x1] ; [x1]의 메모리에 x0의 값을 쓴다. str? store 메모리 쓰기 in AArch64
 // mov x0 x1 ; x1의 값을 x0으로 복사. mov? move 값을 대입 in AArch64
-
+//
+//
 // 2.1.2 x86-64 어셈블리 기초
 // x86-64(windows) 어셈블리의 예도 간단히 살펴보자. x86-64 어셈블리 기술은 2종류가 있음.
 // clang이나 gcc 등의 C 컴파일러를 이용할 때 AT&T기법을 사용하기 때문에 AT&T 기법 위주로 보자.
@@ -44,18 +46,19 @@
 // x86-64에서는 메모리 읽기와 쓰기도 mov 명령으로 실행 가능. 메모리 읽기와 쓰기 명령의 예
 // movq (%rbx), %rax ; rbx가 가리키는 메모리 상의 데이터를 rax로 전송 -> 메모리 읽기 명령
 // movq %rax, (%rbx) ; rax의 값을 rbx가 가리키는 메모리로 전송 -> 메모리 쓰기 명령
-
+//
+//
 // 2.2.3 스택 메모리와 힙 메모리
 // 스택 메모리? 함수의 로컬 변수를 저장하기 위한 메모리 영역, 힙 메모리? 함수의 스코프에 의존하지 않는 메모리를
 // 동적으로 확보하기 위한 메모리 영역.
 pub fn fun1() -> i32 {
     let a = 10; // a의 라이프타임은 함수에서 반환하는 시점까지, 값은 스택에 저장됨.
-    return 2 * fun2(a)
+    return 2 * fun2(a);
 }
 
 fn fun2(a: i32) -> i32 {
     let b = 20; // b의 라이프타임은 함수에서 반환하는 시점까지, 값은 스택에 저장됨
-    return a * b
+    return a * b;
 }
 // 컴파일러에 의한 최적화가 수행되면 a, b 모두 스택이 아니라 레지스터에 저장되지만 컴파일러에 의한 최적화가 수행되지
 // 않는다고 가정한 상태를 나타내 보자(스택 메모리)
@@ -83,13 +86,13 @@ fn fun2(a: i32) -> i32 {
 pub fn fun3() {
     let a = 10; // 지점 A
     let b = fun4(a); // 지점 C
-    // std::mem::drop(b); // 힙 메모리 해제.
+                     // std::mem::drop(b); // 힙 메모리 해제.
 } // 사실 러스트에선 함수 스코프가 끝나면 드랍됨
 
 fn fun4(a: i32) -> Box<i32> {
     let mut tmp = Box::new(0); // 힙 메모리 확보
     *tmp = a * 20;
-    return tmp // 지점 B
+    return tmp; // 지점 B
 }
 //       |--------|       |--------|       |--------| 낮은 주소
 //       |        |       |        |       |        |
@@ -113,8 +116,10 @@ fn fun4(a: i32) -> Box<i32> {
 // 러스트에서는 명시적으로 해제시키지 않아도 스코프가 끝나면 컴파일러가 알아서 해제시킴!
 
 // 2.3 내사랑 Rust. 이 부분은 https://rinthel.github.io/rust-lang-book-ko/ 공식 문서 참조!!
+// sharing-nothing, affine, type system, ownership, monomorphism....
 // Rust는 type safety system을 제공, dangling pointer나 null pointer exception 등의 포인터 관련 문제가
 // 잘 발생하지 않음. unsafe기능을 사용하지 않는 이상 왠만한건 compile때 다 막아줌.
+//
 //
 // 2.3.1 type system
 // 기본 타입 - 정수값(i.., 환경의존은 isize), 부호 없는 정수값(u.., 환경의존은 usize)
@@ -134,6 +139,7 @@ fn fun4(a: i32) -> Box<i32> {
 // rust는 기본적으로 파괴적 대입 불가(immutable)
 // 참조타입은 반드시 라이프타임이 있음(대부분의 경우 컴파일러가 유추해주기 때문에 명시를 생략할 뿐임)
 // https://rinthel.github.io/rust-lang-book-ko/ch10-03-lifetime-syntax.html
+//
 //
 // 2.3.2 기본 문법
 // 세미콜론이 행의 끝에 있으면 statement(구문)으로 간주. 정확히 말하면 () 빈 튜플을 반환함.
@@ -172,13 +178,14 @@ pub fn my_func3() {
 // 거슬러 올라갈 수 있는데, 당시에는 그저 간단한 이름 없는 함수였음. 하지만 스택 기반의 실행 환경에서 자유변수를
 // 캡처하면 스택상에 확보된 값이 파기되는 문제가 종종 발생했음. 그래서 Landin이 1964년에 발표한 SECD 머신에서는
 // heap상에 변수와 자유 변수 환경을 배치해 이 문제를 해결하고 이를 클로저라 정의했음.
-// NOTE_ 함수 밖에서 정의된 변수를 자유 변수, 함수 내부에서 정의된 변수를 종속 변수라함. 함수형 프로그래밍의 흐름도
+// *NOTE! 함수 밖에서 정의된 변수를 자유 변수, 함수 내부에서 정의된 변수를 종속 변수라함. 함수형 프로그래밍의 흐름도
 // 이어받은 Rust는 함수 내부에서 함수를 정의할 수 있기 때문에 클로저에 관해 생각할 때는 함수 안 또는 밖 어디에서
 // 변수가 정의되었는지 구별해야함. C는 함수 내부에서 함수를 정의할 수 없으므로 자유변수는 global var, 종속 변수는
 // local var임. 그러나 Rust의 경우 global var은 자유변수지만, local var는 자유변수와 종속 변수 모두 될 수 있다.
-fn mul_x(x: u64) -> Box::<dyn Fn(u64) -> u64> { // 1
+fn mul_x(x: u64) -> Box<dyn Fn(u64) -> u64> {
+    // 1
     Box::new(move |y| x * y) // 2
-}              //   args    body
+} //   args    body
 
 pub fn my_func4() {
     let f = mul_x(3); // 3
@@ -204,6 +211,7 @@ pub fn my_func4() {
 // 있음.
 // 2행에서 소유권 이동. 왜? 참조를 얻었을 때 변수 x는 함수 mul_x에서 벗어난 시점에서 파기되어 무효한 참조가 되기 때문.
 // 즉, Box::new(move |y| x * y)는 heap상에 x * y를 수행하는 클로저를 생성하고, 자유 변수 x는 소유권 이동으로 캡처됨.
+//
 //
 // 2.3.3 ownership https://rinthel.github.io/rust-lang-book-ko/ch04-00-understanding-ownership.html
 // 러스트의 소유권 이전에 먼저 선형 논리라는 논리 체계부터 알아보자. Γ(감마)와 Φ(파이)를 논리식의 집합이라고 하면
@@ -237,7 +245,8 @@ pub struct Apple {} // 1
 pub struct Gold {}
 pub struct FullStomach {}
 
-pub fn get_gold(a: Apple) -> Gold { // 사과를 팔아 돈을 얻는 함수
+pub fn get_gold(a: Apple) -> Gold {
+    // 사과를 팔아 돈을 얻는 함수
     Gold {}
 }
 
@@ -245,7 +254,8 @@ pub fn get_full_stomach(a: Apple) -> FullStomach {
     FullStomach {}
 }
 
-fn my_func5() { // 2
+fn my_func5() {
+    // 2
     let a = Apple {}; // 사과가 1개 있다고 가정. 3
     let g = get_gold(a); // 사과를 팔아 돈을 얻음. 4
 
@@ -260,6 +270,7 @@ fn my_func5() { // 2
 //
 // 소유권의 기반인 선형 논리와 함께 생각해보면 그 의미가 명확해짐.
 //
+//
 // 2.3.4 라이프타임 https://rinthel.github.io/rust-lang-book-ko/ch10-03-lifetime-syntax.html
 // Rust의 변수는 lifetime이라는 상태를 유지함.
 // 라이프타임을 명시하는 예)
@@ -267,18 +278,15 @@ struct Foo {
     val: u32,
 }
 
-fn add<'a>(x: &'a Foo, y: &'a Foo) -> u32 { // 1
+fn add<'a>(x: &'a Foo, y: &'a Foo) -> u32 {
+    // 1
     x.val + y.val
 }
 
 fn my_func6() {
-    let x = Foo {
-        val: 10
-    }; // 2
+    let x = Foo { val: 10 }; // 2
     {
-        let y = Foo {
-            val: 20
-        };
+        let y = Foo { val: 20 };
         let z = add(&x, &y); // 3
         println!("z = {}", z);
     }
@@ -289,7 +297,7 @@ fn my_func6() {
 // 위 코드는 제네릭의 일종이며 type을 인수로 받는 함수다. 즉, 타입 시스템에서는 type을 받아 type을 return하는 type에
 // 관해 살펴봤지만, 이는 type을 받는 '함수'를 return하는 '함수'이다. 사실 lifetime도 type의 일종이며, 라이프타임을
 // 받는 인수에는 prefix로 작은따옴표를 붙임. 작은따옴표를 prefix로 붙일 수 없는 var에는 u32나 bool 등 일반적인
-// type을 인수로 붙일 수 있음. Rust에서는 라이프타임을 reference에만 명시할 수 있으며 이때는 엠퍼센드(&)뒤에
+// type을 인수로 붙일 수 있음. Rust에서는 라이프타임을 reference에만 명시할 수 있으며 이때는 엠퍼센드뒤에
 // lifetime 변수를 기술한다. 즉 &'a Foo가 lifetime을 명시한 참조 타입이 된다.
 //
 // add 함수의 인수 x와 y의 명시된 'a변수는 같으므로 라이프타임이 같아야함. 실제의 x, y의 라이프타임은 y가 짧다.
@@ -303,6 +311,7 @@ fn my_func6() {
 // 때문에 이를 구현하는 것이 서브타이핑이 된다. 라이프 타임의 경우 x의 라이프타임[10행, 16행 < y의 라이프타임[12행, 15행]
 // 을 클래스의 파생이라고 생각하면 [10, 16]은 [12, 15]로 다룰 수 있다고 생각할 수 있어 클래스의 서브타이핑과 같다.
 // 단 Rust의 경우는 lifetime의 subtyping을 특별히 lifetime subtyping이라 부른다.
+//
 //
 // 2.3.5 차용
 // 차용을 사용하지 않고 move semantics만 사용한다면? 함수에 대한 소유권을 전달해서 계산한 뒤 다른 계산을 할 때
@@ -345,6 +354,283 @@ fn my_func7() {
 // 위한 설계 사상으로 shared-nothing이라는 개념이 있는데, 이것은 공유 자원을 모두 가지지 못하도록 분산 시스템을 설계
 // 및 구현하며 Rust에서의 소유권과 borrow 역시 shared-nothing에 기반한 사고라 볼 수 있음.
 //
-// 러스트의 차용? mut var, immut var, &mut var, &var 4종류로 나눌 수 있음.
+// 러스트의 차용? mut var, immut var, &mut var, &var 4종류로 나눌 수 있음. 그림 2-3 참조
 // https://rinthel.github.io/rust-lang-book-ko/ch04-02-references-and-borrowing.html
+// 예시
+pub struct Foo3 {
+    val: u32,
+}
+
+pub fn my_func8() {
+    let mut x = Foo3 { val: 10 }; // mut var 생성 1
+    {
+        let a = &mut x; // mut var에 대한 mut 참조 2
+        println!("a.val = {}", a.val);
+
+        // // x는 '&mut borrow 중' 상태이므로 에러
+        // println!("x.val = {}", x.val);
+
+        let b: &Foo3 = a; // b는 이뮤터블 참조 4
+                          // a.val = 20; // a는 '& borrow' 상태이므로 에러 5
+        let d: &Foo3 = a; // 9
+        println!("{}", d.val); // 10
+        println!("b.val = {}", b.val); // 6
+                                       // 여기서 b가 차용중인 소유권이 반환된다.
+
+        a.val = 30;
+    }
+    println!("{}", x.val);
+
+    {
+        let c = &x; // c는 이뮤터블 참조 7
+        println!("c.val = {}", c.val);
+        println!("x.val = {}", x.val);
+
+        // let d = &mut x; // x는 '& borrow' 상태이므로 에러, 모든 immutable var가 반환되기 전까진 mut borrow 불가 8
+        // d.val = 40;
+
+        let e = &x; // 11
+        let f = &x;
+        let g = &x;
+        println!("{}", e.val);
+        println!("{}", f.val);
+        println!("{}", g.val);
+
+        println!("{}", c.val);
+
+        let h = &mut x; // 12
+        h.val = 40;
+
+        let i = &mut x; // 13
+        i.val = 40;
+
+        // println!("c.val = {}", c.val);
+    }
+
+    println!("x.val = {}", x.val);
+}
+// 1) mut var x의 상태는 '초기 상태'.
+// 2) mut var x에서 mut 참조를 생성하고 그것을 뮤터블 참조 a가 borrow함. 이때 mut var x는 '&mut borrow 중',
+//    뮤터블 참조 a는 '초기 상태'가 됨.
+// 3) mut var x에 접근하려고 해도 변수 x가 '&mut borrow'이므로 컴파일 에러 발생.
+// 4) mut 참조 a에서 이뮤터블 참조를 생성하고 그 소유권을 이뮤터블 참조 b가 차용함. 이때 mut 참조 a는 '& borrow 중',
+//    이뮤터블 참조 b는 '초기 상태'가 됨.
+// 5) 뮤터블 참조 a에 파괴적 대입을 수행하면 컴파일 에러 발생.
+// 6) 이뮤터블 참조 b가 마지막으로 이용되고, 차용된 참조의 반환은 그 후에 일어남. 그러므로 이 행을 실행한 후 이뮤터블
+//    참조 b가 차용했던 소유권이 변수 a로 반환되고, 뮤터블 참조 a는 '초기 상태'로 돌아간다. 그 결과 뮤터블 참조 a
+//    에 대해 다시 파괴적 대입이 가능하게 됨.
+// 7) mut var x에서 이뮤터블 참조가 생성되고, 그 소유권을 이뮤터블 참조 c가 차용한다. 이때 mut var x는
+//    '& borrow 중', 이뮤터블 참조 c는 '초기 상태'가 된다.
+// 8) 따라서 mut var x에서 뮤터블 참조를 생성해 파괴적 대입을 수행하려 하면 컴파일에러가 발생한다.
 //
+// *차용 요약
+// 1) mut 변수 x를 a라는 변수에 &mut borrow해 가져가서 사용할 경우 x는 사용 불가(읽기 포함).
+// 2) &mut borrow해서 가져간 값(초기상태인 a의 값)을 print만 찍어서 사용해도 반환됨(값을 변경해도 사용, 반환됨)
+//    즉 반환되었으면 다시 mut 변수 x를 사용할 수 있다. 헷갈릴 수 있는 부분임. 스코프가 끝나지 않았음에도 반환됨!!
+// 3) 이후로 a를 이뮤터블 참조해서 b라는 변수에 가져가면 a의 값은 변경할 수 없음(&mut var를 & borrow했으므로.)
+//    그러나 이뮤터블 참조로 차용시켰기 때문에 '변경'할 수 없는 것이지 '사용'은 할 수 있음. 9, 10 참조
+// 4) mut 변수 x를 c라는 변수에 & borrow(이뮤터블 참조)해 가져간다면, c가 초기 상태일 경우나 반환되었을 때만
+//    x를 &mut borrow할 수 있음. 8, 12, 13
+//    그러나 & borrow는 제한없이 가능하다. 11 참조
+//
+// 소유권과 차용(+타입시스템)이라는 개념을 도입해 얻을 수 있는 장점? 동시성 프로그래밍에서 맞닥뜨리는 문제와,
+// Garbage Collection에서 만날 수 있는 문제를 해결할 수 있다는 것.
+// e.g. 여떤 객체가 여러 위치에서 참조되는 상황에서는 해당 객체를 참조할 수 없는 타이밍을 감지해 객체를 파기하지 않으면
+//      않으면 메모리 누설이 발생한다.
+// 이를 수행하는 것이 GC지만 GC는 프로그래머가 관리하기 어렵고 실행 속도에 영향을 미칠 수 있음. 또한
+// RC(Reference counter) 등을 포함해 GC에는 일정 이상의 오버헤드가 발생한다. 하지만 소유권과 차용이 있다면?
+// 객체를 파기하는 타이밍을 컴파일 시 알 수 있어 그런 문제가 발생하지 않는다.
+//
+//
+// 2.3.6 메서드 정의
+// 객체 지향 언어 특) 어떤 객체에 대한 함수를 정의할 수 있으며 이를 method라 부름.
+// Rust는 impl 키워드를 이용해 메서드 정의 가능
+pub struct Vec2 {
+    x: f64,
+    y: f64,
+}
+
+impl Vec2 {
+    // 1
+    fn new(x: f64, y: f64) -> Self {
+        // 2
+        Vec2 { x, y }
+    }
+
+    fn norm(&self) -> f64 {
+        // 3
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+
+    fn set(&mut self, x: f64, y: f64) {
+        // 4
+        self.x = x;
+        self.y = y;
+    }
+}
+
+pub fn my_func9() {
+    let mut v = Vec2::new(10.0, 5.0); // 5
+    println!("v.norm = {}", v.norm());
+    v.set(3.8, 9.1);
+    println!("v.norm = {}", v.norm());
+}
+// *TIP self의 타입은 참조뿐만 아니라 참조가 아닌 일반적인 타입, Box, Arc같은 스마트 포인터를 지정할 수도 있다.
+// 당연한 얘기지만 참조가 아닌 일반적인 타입으로 지정하면 함수 호출 시 (호출자가) 소유권을 빼앗는다.
+// 여기서는 impl로 메서드를 정의하거나 trait 함수를 구현하는 것을 해당 type으로 구현한다고 말할 것임.
+//
+//
+// 2.3.7 trait
+// java의 interface + Haskell의 type class를 혼합한 기능. trait으로 구현한 주요 기능 중 Ad-Hoc polymorphism
+// 이 있음. 애드혹 다형성은 다른 함수를 같은 함수명으로 정의하고 이용할 수 있는 특성.
+// e.g. u32 type 덧셈과 f32 type 덧셈의 실제 처리는 다르지만 동일하게 + 연산자를 이용해서 덧셈을 할 수 있는 것은
+//      애드혹 다형성 덕분. 애드혹 다형성이 없는 OCaml? 정수의 덧셈 연산자는 + 부동소수점수의 덧셈 연산자는 +. 이다.
+trait Adds<RHS = Self> {
+    // 1
+    type Output; // 2
+    fn adds(self, rhs: RHS) -> Self::Output; // 3
+} // std lib인 Add trait을 나타낸 것으로, Add trait을 구현한 타입은 +연산자를 이용할 수 있게 됨.
+  // 1) Add trait 정의. 이 trait은 제네릭으로 되어 있어 type arg를 받음. RHS가 type arg이고,
+  // Self가 기본 type arg이며, type arg가 지정되지 않으면 RHS는 Add trait을 구현한 type(impl Add<RHS=Self> for [...])과 같다.
+  // 2) 이 trait 안에서 이용하는 type을 정의함.
+  // 3) 구현할 add 함수 타입을 정의한다.
+use std::ops::Add; // 1
+
+#[derive(Copy, Clone)]
+struct Vec3 {
+    x: f64,
+    y: f64,
+}
+
+impl Add for Vec3 {
+    // 2
+    type Output = Vec3;
+
+    fn add(self, rhs: Vec3) -> Vec3 {
+        Vec3 {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+
+pub fn my_func10() {
+    let v1 = Vec3 { x: 10.0, y: 5.0 };
+    let v2 = Vec3 { x: 3.1, y: 8.7 };
+    let v = v1 + v2; // + 연산자를 사용할 수 있음. v1과 v2의 소유권은 이동 3
+    println!("v.x = {}, v.y = {}", v.x, v.y);
+}
+// 1) Add trait을 표준 라이브러리에서 import
+// 2) Vec3 type을 위한 Add trait 구현, Output type과 add 함수를 정의.
+// 3) add 함수 호출
+//
+// 3에서 소유권 이동이 발생하므로 v1과 v2는 더이상 사용할 수 없음. trait을 구현한 커스텀 타입인 Vec3가 copy트레잇을
+// 구현하지 않기 때문(기본 타입들은 대부분 copy trait을 구현함). copy trait을 위와 같이 구현하는 것도 방법이지만
+// derive attribute를 통해 간단하게 구현할 수 있음 Vec3 struct에 추가해보자. #[derive(Copy, Clone)]
+// Eq를 구현하려면 PartialEq가 필요한 것처럼, Copy를 구현하려면 Clone도 필요함. 같이해줘야함.
+//
+// 어떤 trait을 구현한 객체를 대상으로 하는 제네릭 함수는 trait constraint(제약)라 불리는 기능을 이용해 구현한다.
+// fn add_3times<T: Add<Output = T> + Copy>(a: T) -> T 와 같음
+fn add_3times<T>(a: T) -> T
+where
+    // where 문법은 가독성을 위한 것으로 이렇게 하지않으면 위처럼 해야함
+    T: Add<Output = T> + Copy, // 1
+{
+    a + a + a
+}
+// 1) where에서 type arg T의 trait constraint를 명시, 여기에서 type T는 Add와 Copy trait을 구현하고 있으며
+//    Add trait 안의 Output type은 T로 하고 있음. 이렇게 함으로써 add_3times는 Add와 Copy trait을 구현한
+//    타입에만 적용할 수 있음. 즉 Add와 Copy trait을 구현하지 않은 타입은 이 함수의 인자로 쓸 수 없다.
+//
+//
+// 2.3.8. ? operator와 unwrap()
+// Rust의 에러 처리는 Option type 또는 Result type를 이용해서 수행하지만, 모든 에러 판정을 패턴 매칭
+// 으로 수행하면 코드가 장황해짐. 그래서 간략하게 표기할 수 있도록 ? 연산자와 unwrap()함수를 제공(expect()도 있음).
+//
+// fn option_result() {
+//     let a = get(expr)?; // 1
+//
+//     // get 함수가 Option type을 반환하는 경우
+//     // 위 ? 연산자는 다음 패턴매칭과 동일함.
+//     let a = match get(expr) { // 2
+//         Some(e) => e,
+//         None => return None,
+//     };
+//
+//     // get 함수가 Result type을 반환하는 경우
+//     // 위 ? 연산자는 다음 패턴 매칭과 동일함.
+//     let b = match get(expr) { // 3
+//         Ok(e) => e,
+//         Err(e) => return Err(e).unwrap(),
+//     };
+// }
+// 즉, ? 연산자는 match와 reutrn의 syntactic sugar(통사론적 설탕)이다. ? 연산자는 편리하니 기억해둘 것.
+//
+// Rust에서는 Option type이나 Result type 등에 unwrap() 함수를 구현하는 경우가 대다수이며, 성공해 값을 꺼낼 수
+// 있으면 꺼내고, 꺼낼 수 없으면 panic으로 종료시키는 작동을 기술할 수 있음.
+// fn exam_unwrap() {
+//     let a = get(expr).unwrap(); // 1
+//
+//     // get 함수가 Option type을 반환하는 경우
+//     // 위 unwrap 함수 호출은 다음 패턴 매칭과 동일.
+//     let a = match get(expr) { // 2
+//         Some(e) => e,
+//         None => { panic!() },
+//     };
+//
+//     // get 함수가 Result type을 반환하는 경우
+//     // 위 unwrap 함수 호출은 다음 패턴 매칭과 동일.
+//     let a = match get(expr) { // 3
+//         Ok(e) => e,
+//         Err(e) => { panic!() },
+//     };
+// }
+//
+//
+// 2.3.9 thread
+use std::thread::spawn; // 1
+
+fn hello() { // 2
+    println!("Hello World!");
+}
+
+pub fn my_func11() {
+    // spawn(hello()).join(); // 3
+
+    let h = || println!("Hello World!"); // 4
+    spawn(h).join();
+}
+// 3) spawn 함수를 호출해 스레드 생성, spawn 함수의 인수에는 hello라는 함수 포인터를 전달하므로 다른 스레드에서
+//    Hello World!가 표시된다. Rust의 스레드는 기본적으로 attach thread이므로 join할 필요는 없지만 join 함수를
+//    이용해 스레드가 종료되기까지 대기할 수 있음.
+// 4) closure를 이용해도 스레드를 생성할 수 있음.
+
+pub fn my_func12() {
+    let v = 10;
+    let f = move || v * 2; // 1
+
+    // Ok(10 * 2)를 얻음.
+    let result = spawn(f).join(); // 2
+    println!("result = {:?}", result); // Ok(20)이 표시됨
+
+    // 스레드가 panic인 경우 Err(패닉값)을 얻을 수 있음.
+    match spawn(|| panic!("I'm panicked!")).join() { // 3
+        Ok(_) => { // 4
+            println!("successed");
+        }
+        Err(a) => { // 5
+            let s = a.downcast_ref::<&str>();
+            println!("failed: {:?}", s);
+        }
+    }
+}
+// 1) 스레드 생성을 위해 클로저 정의. Rust의 스레드는 값을 반환할 수 있음.
+// 2) 정의한 클로저를 spawn함수에 전달해 스레드 생성. 스레드의 반환값은 join함수의 반환값에 포함됨. 단, join함수의
+//    반환값은 Result type이므로 실제로는 Ok(20)을 포함해 반환함.
+// 3) 스레드가 패닉에 빠져 종료한 예. panic! 매크로를 호출해 스레드를 패닉으로 만드는 클로저를 spawn함수에 전달해
+//    스레드를 생성하고 join함.
+// 4) 스레드가 올바르게 종료된 경우의 처리
+// 5) 스레드가 패닉이 된 경우 join 함수의 반환값에 Result type의 Err에 패닉 시의 값이 포함됨. Err에 포함된 값의
+//    type은 어던 type도 될수 있는 Any라 불리는 특수한 type. 이 Any type으로부터 println! 함수에 전달하기 위해
+//    &str type으로 cast해서 표시한다.
+// 이렇게 함으로써 스레드의 반환값 또는 패닉에 빠졌을 때의 반환값을 얻을 수 있음.
