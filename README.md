@@ -1,5 +1,7 @@
 ## Readme
-This is written for my learning by referring to the Concurrent Programming book (Author: Yuuki Takano).
+This is written for my learning by referring to the Concurrent Programming book.
+
+Author: Yuuki Takano
 
 ## License
 MIT License
