@@ -1,5 +1,6 @@
 mod ch01_concurrency_and_parallelism;
 mod ch02_basic_programming;
+mod ch03_synchronous_processing01;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
