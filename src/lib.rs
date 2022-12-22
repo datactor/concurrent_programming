@@ -8,6 +8,10 @@ pub fn add(left: usize, right: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::sync::mpsc::channel;
     use super::*;
 
     #[test]
@@ -25,5 +29,11 @@ mod tests {
         ch02_basic_programming::my_func12();
 
         ch03_synchronous_processing01::compare_and_swap2();
+        ch03_synchronous_processing01::mutex02();
+
+        ch03_synchronous_processing01::some_func4();
+        // let mut cnt = AtomicUsize::new(0);
+        // cnt = ch03_synchronous_processing01::semaphore_acquire(cnt);
+        // ch03_synchronous_processing01::semaphore_release(cnt);
     }
 }
