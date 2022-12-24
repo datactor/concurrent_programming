@@ -431,3 +431,55 @@ fn barrier01(mut cnt: AtomicUsize, mut max: AtomicUsize) { // 1
 // Reader수를 나타내는 rcnt(초기값 0), Writer 수를 나타내는 wcnt(초기 0), Writer용 락 변수 lock(초기값 false)의
 // 3개 공유 변수를 이용해 베타제어를 수행하는 알고리즘이다. 또한 Reader용 락 획득과 반환 함수, Writer용 락 획득과
 // 반환함수는 별도의 인터페이스로 되어 있어 실제 이용할 때는 공유 리소스의 읽기만 수행할지 쓰기만 수행할지 판단해서 이용해야함.
+// RW락을 사용해야 할 상황은 대부분 읽기 처리이며, 쓰기는 거의 읽어나지 않을 것임. 위의 페이지에서 소개한 알고리즘은
+// Writer를 우선하도록 설정되어 있으므로 그런 상황에서는 잘 작동하지만 쓰기가 빈번하게 일어난다면 읽기를 전혀 실행하지
+// 못하게 되므로 주의해야함. 쓰기도 많이 수행되는 처리인 경우에는 뮤텍스를 이용하는 편이 실행 속도와 안정성 측면에서 좋다.
+// RW락 사용예제 114p 참고
+// 사용 방법은 뮤텍스와 거의 동일하지만 구현할 때는 읽기만의 처리인지 또는 쓰기도 수행하는 처리인지 파악해야 함.
+//
+//
+// 3.7.2 Pthreads의 RW락
+// Pthreads에서도 RW락용 API를 제공함. 115p 참고
+//
+// 3.7.3 실행 속도 측정
+// RW락의 실행 속도 측정, 락의 실행 속도를 비교하는 코드 작성. 락을 획득해 HOLDTIME만 루프를 해제해서 락을 해제하는
+// 작동을 수행하는 worker thread를 N개 실행하고, 이 일련의 작동을 지정한 시간 동안 몇 번 수행할 수 있는지 측정
+// 116p - 121p 참조
+
+
+// 3.8 Rust 동기 처리 라이브러리
+// Rust에서는 기본적인 동기 처리 라이브러리를 표준 라이브러리(std::sync)로 제공함. 러스트의 동기 처리 라이브러리는
+// 크리티컬 밖에서의 보호 대상 객체의 접근과 락 미해제를 타입시스템으로 방지하는 특징을 갖고 있음!!!!!!
+//
+/// 3.8.1 Mutex
+fn some_func5(lock: Arc<Mutex<u64>>) { // 2
+    loop {
+        // 락을 하지 않으면 Mutex type 안의 값은 참조 불가
+        let mut val = lock.lock().unwrap(); // //
+        *val += 1;
+        println!("{}", *val);
+    }
+}
+
+pub fn my_func() {
+    // Arc는 thread safe한 rc 타입의 스마트 포인터(Atomic reference counter)
+    // rc가 선행되어야 함 https://rinthel.github.io/rust-lang-book-ko/ch15-04-rc.html
+    let lock0 = Arc::new(Mutex::new(0)); // 4
+
+    // 참조 카운터가 증가될 뿐이며 내용은 클론되지 않음.
+    let lock1 = lock0.clone(); // 5
+
+    // thread 생성, 클로저 내 변수로 이동
+    let th0 = thread::spawn(move || { //
+        some_func5(lock0);
+    });
+
+    // thread spawn, 클로저 내 변수로 이동
+    let th1 = thread::spawn(move || {
+        some_func5(lock1);
+    });
+
+    // 약속(rust에선 future)
+    th0.join().unwrap();
+    th1.join().unwrap();
+}
