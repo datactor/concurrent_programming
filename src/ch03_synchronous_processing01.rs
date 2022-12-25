@@ -574,7 +574,7 @@ pub fn some_func6_125p() {
 /// Rust의 RW락은 Mutex와 거의 같으므로 일단은 락 구조만 간단히 살펴보자
 use std::sync::RwLock; // 1
 
-fn some_func7_126p() {
+pub fn some_func7_126p() {
     let lock = RwLock::new(10); // 2
     {
         // immutable 참조를 얻음 3
@@ -606,7 +606,7 @@ fn some_func7_126p() {
 /// Rust에는 배리어 동기용 표준 라이브러리도 있음.
 use std::sync::Barrier; // 1
 
-fn some_func8_127p() {
+pub fn some_func8_127p() {
     // 스레드 핸들러를 저장하는 벡터
     let mut v = Vec::new(); // 2
 
@@ -635,6 +635,7 @@ fn some_func8_127p() {
 /// 3.8.5 세마포어
 /// Rust에서는 세마포어를 표준으로 제공하지 않음. 그렇지만 Mutex와 Condvar를 이용해서 세마포어를 구현할 수 있음.
 /// Semaphore type을 정의하고 그 type으로 세마포어용 함수인 wait와 post함수를 구현해보자.
+use std::time::Duration;
 pub struct Semaphore {
     mutex: Mutex<isize>,
     cond: Condvar,
@@ -653,13 +654,22 @@ impl Semaphore {
     pub fn wait(&self) {
         // 카운터가 최대값 이상이면 대기 3
         let mut cnt = self.mutex.lock().unwrap();
-        // while *cnt >= self.max {
-        //     cnt = self.cond.wait(cnt).unwrap();
-        // }
+        while *cnt >= self.max {
+            cnt = self.cond.wait(cnt).unwrap();
+        }
+
         // 다음과 같이 wait_while을 사용할 수도 있음.
-        self.cond.wait_while(cnt, |cnt| *cnt >= self.max).unwrap();
+        cnt = self.cond.wait_while(cnt, |cnts| *cnts >= self.max).unwrap();
+        // let (mut cnt, result) = self.cond.wait_timeout_while(
+        //     cnt,
+        //     Duration::from_millis(100),
+        //     |cnts| *cnts >= self.max
+        // )
+        //     .unwrap();
+
 
         *cnt += 1; // 4
+        // println!("critical section")
     }
 
     pub fn post(&self) {
@@ -678,3 +688,49 @@ impl Semaphore {
 // 5) 락을 해서 카운터를 감소, 이후 카운터가 최대값 이하면 조건 변수로 대기 중인 스레드에 알림.
 // 이렇게 Semaphore type의 변수는 현재 Critical Section을 실행 중인 프로세스 수를 세고, 그 수에 따라 대기나
 // 알림을 수행함. 카운터의 증가와 감소는 Mutex로 락을 획득한 상태에서 수행되므로 배타적 실행을 보증함.
+// 세마포어의 코드를 테스트해보자
+const NUM_LOOP: usize = 100000;
+const NUM_THREADS: usize = 8;
+const SEM_NUM: isize = 4;
+
+static mut CNT: AtomicUsize = AtomicUsize::new(0);
+
+pub fn some_func9_129p() {
+    let mut v = Vec::new();
+    // SEM_NUM만큼 동시 실행 가능한 세마포어
+    let sem = Arc::new(Semaphore::new(SEM_NUM));
+
+    for i in 0..NUM_THREADS {
+        let s = sem.clone();
+        let t = thread::spawn(move || {
+            for _ in 0..NUM_LOOP {
+                s.wait();
+
+                // atomic하게 증가 및 감소
+                unsafe { CNT.fetch_add(1, Ordering::SeqCst) };
+                let n = unsafe { CNT.load(Ordering::SeqCst) };
+                println!("semaphore: i = {}, CNT = {}", i, n);
+                assert!((n as isize) <= SEM_NUM);
+                unsafe { CNT.fetch_sub(1, Ordering::SeqCst) };
+
+                s.post();
+            }
+        });
+        v.push(t);
+    }
+
+    for t in v {
+        t.join().unwrap();
+    }
+}
+// 여기서는 스레드를 NUM_THREADS(8)만큼 만들고, SEM_NUM(4) 스레드만큼 동시에 Critical Section을 실행할 수 있는
+// Semaphore를 만들었음. 그러므로 wait과 post 사이는 4 스레드 이내로 제한됨. 확인해보자.
+// AtomicUsize 아토믹 변수를 이용해 스레드 안에서 증가와 감소를 수행해 그 수를 확인한다. fetch_add, fetch_sub
+// 명령으로 아토믹 덧셈 뺄셈을 할 수 있으며 load가 읽기 명령. Ordering::SeqCst는 메모리 배리어 방법을 의미,
+// SeqCst는 가장 제한이 엄격한(순서를 변경할 수 없는) 메모리 베리어 지정이 된다. 메모리 배리어는 4.7절에서 더 자세히 보자.
+// 이 테스트 코드를 실행하면 SEM_NUM보다 CNT값이 커졌을 때 assert 매크로가 실패해야 하지만 그런 일은 일어나지 않음.
+// 세마포어를 이용하면 queue의 크기가 유한한 채널을 구현할 수 있다. channel은 프로세스 사이에서 메시지 교환을 수행하기
+// 위한 추상적인 통신로다. Rust에서는 채널이 송신단과 수신단으로 나뉘어 있으므로 그에 맞춰 구현해보자.
+/// 다음은 송신단용 Sender type
+use std::collections::LinkedList;
+

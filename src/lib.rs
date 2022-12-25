@@ -36,5 +36,8 @@ mod tests {
         // cnt = ch03_synchronous_processing01::semaphore_acquire(cnt);
         // ch03_synchronous_processing01::semaphore_release(cnt);
         ch03_synchronous_processing01::some_func6_125p();
+        ch03_synchronous_processing01::some_func7_126p();
+        ch03_synchronous_processing01::some_func8_127p();
+        ch03_synchronous_processing01::some_func9_129p();
     }
 }
