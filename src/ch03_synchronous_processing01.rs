@@ -398,10 +398,10 @@ pub fn some_func4() {
 /// 2) 공유 변수가 계속 증가되어 어떤 일정한 수에 도달하면 배리어를 벗어나 처리를 수행.
 /// 간단하다. 한 클래스의 학생이 30명이라고 할 때 각 학생이 공유 변수를 준비하고, 준비가 되면 각자 공유 변수를 증가하고
 /// 그 값이 30이 되면 이동을 시작하는 것과 같음.
-fn barrier01(mut cnt: AtomicUsize, mut max: AtomicUsize) { // 1
-    cnt.fetch_add(1, Ordering::SeqCst); // 2
-    while cnt < max {}; // 3
-}
+// fn barrier01(mut cnt: AtomicUsize, mut max: AtomicUsize) { // 1
+//     cnt.fetch_add(1, Ordering::SeqCst); // 2
+//     while cnt < max {}; // 3
+// }
 // 1) 공유 변수에 대한 값 cnt와 최댓값 max를 받음.
 // 2) 공유 변수 cnt를 아토믹하게 증가시킴.
 // 3) cnt가 가리키는 값이 max가 될 때까지 대기.
@@ -455,7 +455,7 @@ fn barrier01(mut cnt: AtomicUsize, mut max: AtomicUsize) { // 1
 fn some_func5(lock: Arc<Mutex<u64>>) { // 2
     loop {
         // 락을 하지 않으면 Mutex type 안의 값은 참조 불가
-        let mut val = lock.lock().unwrap(); // //
+        let mut val = lock.lock().unwrap(); // 3
         *val += 1;
         println!("{}", *val);
     }
@@ -483,3 +483,198 @@ pub fn my_func() {
     th0.join().unwrap();
     th1.join().unwrap();
 }
+// 2) Arc<Mutex<u64>> type의 값을 받는 스레드용 함수
+// 3) lock 함수를 호출해 락을 걸어 보호 대상 데이터의 참조를 얻는다(락을 걸지 않으면 얻을 수 없음)
+// 4) Mutex용 변수를 저장하는 스레드 세이프한 RC type의 스마트 포인터를 생성. Mutex용 변수는 이미 값을 저장하고
+//    있으므로 초기 값을 0으로 설정
+// 5) Arc type의 값은 클론해도 RC만 증가될 뿐, 내부 데이터는 복사되지 않는다.
+// 6) move 지정자는 클로저 안의 변수 캡처 방법을 지정함. move가 지정되면 소유권이 이동하고, 지정되지 않으면 참조가
+//    전달됨.
+// Rust에서 Mutex용 변수는 보호 대상 데이터를 보존하도록 되어 있어 락을 하지 않으면 보호 대상 데이터에 접근할 수 없다.
+// C에서는 보호 대상 데이터는 락을 하지 않아도 접근할 수 있지만 그런 코드는 레이스 컨디션이 될 가능성이 있다. 한편
+// Rust에서는 이와 같이 컴파일 시에 공유 리소스로의 부정한 접근을 방지할 수 있도록 설계되어 있다. 또한 보호 대상
+// 데이터가 스코프를 벗어나면 자동으로 락이 해제된다. 그러므로 Pthreads로 발생한 락의 취득과 해제를 잊어버리는 것을
+// 방지할 수 있다.
+// lock 함수는 LockResult<MutexGuard<'_, T>>라는 type을 반환하며, LockResult type의 정의는 아래와 같음.
+// type LockResult<Guard> = Result<Guard, PoisonError<Guard>>;
+// 즉, 락을 획득할 수 있는 경우에는 MutexGuard라는 type에 보호 대상 데이터를 감싸 반환하고, 이 MutexGuard 변수의
+// 스코프를 벗어날 때 자동으로 락을 해제(rust의 drop)하는 구조가 구현되어 있음.
+// 또한 어떤 스레드가 락 획득 중에 패닉에 빠지는 경우 해당 뮤텍스는 poisoned 상태에 있따고 간주되어 락 획득에 실패함.
+// 여기서는 이 체크를 간단하게 unwrap으로 실행하며, 락을 획득할 수 없는 경우(unwrap 실패시 panic!) 종료하도록 했다.
+// lock의 유사함수로 try_lock 함수가 있음. try_lock 함수는 락의 획득을 시험해서 획득가능하면 락을 걸지만
+// 그렇지 않으면 처리를 되돌림. 이와 같은 함수는 Pthreads에도 있음.
+//
+/// 3.8.2 조건 변수
+/// Rust의 조건 변수는 Condvar type이며, 이용 방법은 Pthreads의 경우와 거의 같다. 락을 획득한 뒤 조건 변수를
+/// 이용해 wait 또는 notify를 수행함.
+use std::sync::Condvar; // 1
+
+// Condvar type의 변수가 조건 변수이며 Mutex와 Condvar를 포함하는 튜플이 Arc에 포함되어 전달된다.
+fn child(id: u64, p: Arc<(Mutex<bool>, Condvar)>) { // 2
+    let &(ref lock, ref cvar) = &*p;
+    // & vs ref
+    // In patterns, & destructures a borrow, ref binds to a location by-reference rather than by-value.
+    // https://users.rust-lang.org/t/ref-keyword-versus/18818
+
+    // 먼저 Mutex lock을 수행한다.
+    let mut started = lock.lock().unwrap(); // 3
+    // while !*started { // Mutex 안의 공유 변수가 false인 동안 루프
+    //     // wait으로 대기
+    //     started = cvar.wait(started).unwrap(); // 4
+    // }
+
+    // 다음과 같이 wait_while을 사용할 수도 있음.
+    cvar.wait_while(started, |started| !*started).unwrap();
+
+    println!("child {}", id);
+}
+
+fn parent(p: Arc<(Mutex<bool>, Condvar)>) { // 5
+    let &(ref lock, ref cvar) = &*p;
+
+    // 먼저 뮤텍스락을 수행한다. 6
+    let mut started = lock.lock().unwrap();
+    *started = true; // 공유 변수 업데이트
+    cvar.notify_all(); // 알림
+    println!("parent");
+}
+
+pub fn some_func6_125p() {
+    // Mutex와 cond var 작성
+    let pair0 = Arc::new((Mutex::new(false), Condvar::new()));
+    let pair1 = pair0.clone();
+    let pair2 = pair0.clone();
+
+    let c0 = thread::spawn(move || { child(0, pair0) });
+    let c1 = thread::spawn(move || { child(1, pair1) });
+    let p = thread::spawn(move || { parent(pair2) });
+
+    c0.join().unwrap();
+    c1.join().unwrap();
+    p.join().unwrap();
+}
+// 2) 대기 스레드용 함수 정의. 스레드 고유의 번호를 받는 id 변수 및 Mutex type 변수와 Condvar type 변수의 튜플을
+//    Arc로 감싼 값을 받음.
+// 3) Arc type 내부에 포함된 Mutex 변수와 조건 변수를 꺼낸다.
+// 4) 알림이 있을 때까지 대기한다.
+// 5) 알림 스레드용 함수
+// 6) 락을 한 뒤 공유 변수값을 true로 설정하고 알림
+// child 함수 내부에서는 Mutex로 보호된 논리값이 true가 될 때까지 루프를 돈다. notify하는 스레드가 먼저 실행된
+// 경우 및 의사 각성에 대처하기 위해서임. wait_while 함수에서는 두 번째 인수로 전달되는 술어(값)가 false가 될 때까지
+// 대기한다(As long as the value inside the `Mutex<bool>` is `true`, we wait.). wait 계열의 함수도
+// lock함수와 마찬가지로 대상 Mutex가 poisoned 상태가 되었을 때 실패하며, 여기서는 unwrap으로 대처.
+//
+// 대기 함수에는 타임아웃 가능한 wait_timeout 계열 함수도 있으며, 이 함수에서는 wait하는 시간을 지정할 수 있음.
+// 즉, 지정한 시간 내에 다른 스레드로부터 notify가 없는 경우 해당 함수는 대기를 종료하고 반환한다. 타임아웃 가능한
+// wait함수에 관해서는 매뉴얼 등을 참조해보자.
+//
+//
+
+/// 3.8.3 RW락
+/// Rust의 RW락은 Mutex와 거의 같으므로 일단은 락 구조만 간단히 살펴보자
+use std::sync::RwLock; // 1
+
+fn some_func7_126p() {
+    let lock = RwLock::new(10); // 2
+    {
+        // immutable 참조를 얻음 3
+        let v1 = lock.read().unwrap();
+        let v2 = lock.read().unwrap();
+        println!("v1 = {}", v1);
+        println!("v2 = {}", v2);
+    }
+
+    {
+        // mutable 참조를 얻음 4
+        let mut v = lock.write().unwrap();
+        *v = 7;
+        println!("v = {}", v);
+    }
+}
+// 2) RW락용 값을 생성하고, 보호 대상 값의 초깃값인 10을 지정한다.
+// 3) read 함수를 호출해 Read락을 수행. Read락은 몇번이든 수행할 수 있음.
+// 4) write 함수를 호출해 Write락을 수행.
+// Rust에선 간단하게 read는 immutable, write는 mutable이라고 보면 될 듯 하다.
+// Read락을 수행하는 read함수를 호출하면 뮤텍스락과 마찬가지로 보호 대상 이뮤터블 참조(RwLockReadGuard type으로
+// 감싼 참조)를 얻을 수 있으며, 이 참조를 통해 값에 읽기 접근만 가능하게 됨. 뮤텍스락과 마찬가지로 이 참조의 스코프를
+// 벗어나면 자동적으로 Read락이 해제됨.
+// write함수의 경우 보호 대상 mutable 참조(RwLockWriteGuard type으로 감싼 참조)를 얻을 수 있다. 그러므로
+// 보호 대상 데이터에 쓰기와 읽기 접근 모두 가능. RW락에도 뮤텍스와 마찬가지로 try계열 함수가 있음. 메뉴얼 참조
+//
+//
+/// 3.8.4 배리어 동기
+/// Rust에는 배리어 동기용 표준 라이브러리도 있음.
+use std::sync::Barrier; // 1
+
+fn some_func8_127p() {
+    // 스레드 핸들러를 저장하는 벡터
+    let mut v = Vec::new(); // 2
+
+    // 10 스레드 만큼의 배리어 동기를 Arc로 감쌈
+    let barrier = Arc::new(Barrier::new(10)); // 3
+
+    // 10 스레드 실행
+    for _ in 0..10 {
+        let b = barrier.clone();
+        let th = thread::spawn(move || {
+            b.wait(); // 배리어 동기 4
+            println!("finished barrier");
+        });
+        v.push(th);
+    }
+
+    for th in v {
+        th.join().unwrap();
+    }
+}
+// 2) 나중 join을 수행하기 위해 스레드 핸들러를 보존하는 벡터를 정의. 이 Vec type은 동적 배열 객체를 다루는 데이터 컨테이너(힙 데이터 컨테이너).
+// 3) 배리어 동기용 객체를 생성. 인수 10은 10스레드로 promise(future)를 수행하기 위해서임.
+// 4) 배리어 동기
+//
+//
+/// 3.8.5 세마포어
+/// Rust에서는 세마포어를 표준으로 제공하지 않음. 그렇지만 Mutex와 Condvar를 이용해서 세마포어를 구현할 수 있음.
+/// Semaphore type을 정의하고 그 type으로 세마포어용 함수인 wait와 post함수를 구현해보자.
+pub struct Semaphore {
+    mutex: Mutex<isize>,
+    cond: Condvar,
+    max: isize,
+}
+
+impl Semaphore {
+    pub fn new(max: isize) -> Self { // 2
+        Semaphore {
+            mutex: Mutex::new(0),
+            cond: Condvar::new(),
+            max,
+        }
+    }
+
+    pub fn wait(&self) {
+        // 카운터가 최대값 이상이면 대기 3
+        let mut cnt = self.mutex.lock().unwrap();
+        // while *cnt >= self.max {
+        //     cnt = self.cond.wait(cnt).unwrap();
+        // }
+        // 다음과 같이 wait_while을 사용할 수도 있음.
+        self.cond.wait_while(cnt, |cnt| *cnt >= self.max).unwrap();
+
+        *cnt += 1; // 4
+    }
+
+    pub fn post(&self) {
+        // 카운터 감소 5
+        let mut cnt = self.mutex.lock().unwrap();
+        *cnt -= 1;
+        if *cnt <= self.max {
+            self.cond.notify_one();
+        }
+    }
+}
+// 1) Semaphore type 정의, Mutex와 상태 변수 및 동시에 락을 획득할 수 있는 프로세스의 최대 수를 저장.
+// 2) 초기화 시에 동시에 락을 획득할 수 있는 프로세스의 최대 수를 설정
+// 3) 락을 해서 카운터가 최대값 이상이면 조건 변수의 wait함수로 대기함.
+// 4) 카운터를 증가한 뒤 Critiacal Section으로 이동함.
+// 5) 락을 해서 카운터를 감소, 이후 카운터가 최대값 이하면 조건 변수로 대기 중인 스레드에 알림.
+// 이렇게 Semaphore type의 변수는 현재 Critical Section을 실행 중인 프로세스 수를 세고, 그 수에 따라 대기나
+// 알림을 수행함. 카운터의 증가와 감소는 Mutex로 락을 획득한 상태에서 수행되므로 배타적 실행을 보증함.

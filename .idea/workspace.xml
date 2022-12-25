@@ -12,6 +12,7 @@
     <list default="true" id="74a9b0f8-656d-49d7-b93a-58a2f3b2a3aa" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ch03_synchronous_processing01.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ch03_synchronous_processing01.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -86,7 +87,9 @@
       <workItem from="1671692210054" duration="23239000" />
       <workItem from="1671774911754" duration="635000" />
       <workItem from="1671782609062" duration="7077000" />
-      <workItem from="1671866235837" duration="2165000" />
+      <workItem from="1671866235837" duration="3064000" />
+      <workItem from="1671869556720" duration="1346000" />
+      <workItem from="1671932300730" duration="6750000" />
     </task>
     <servers />
   </component>

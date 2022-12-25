@@ -35,5 +35,6 @@ mod tests {
         // let mut cnt = AtomicUsize::new(0);
         // cnt = ch03_synchronous_processing01::semaphore_acquire(cnt);
         // ch03_synchronous_processing01::semaphore_release(cnt);
+        ch03_synchronous_processing01::some_func6_125p();
     }
 }
