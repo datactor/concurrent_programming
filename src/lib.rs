@@ -38,6 +38,7 @@ mod tests {
         ch03_synchronous_processing01::some_func6_125p();
         ch03_synchronous_processing01::some_func7_126p();
         ch03_synchronous_processing01::some_func8_127p();
-        ch03_synchronous_processing01::some_func9_129p();
+        // ch03_synchronous_processing01::some_func9_129p();
+        ch03_synchronous_processing01::some_func11_138p();
     }
 }

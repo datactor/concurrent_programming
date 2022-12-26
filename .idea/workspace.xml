@@ -59,7 +59,7 @@
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="cf.first.check.clang-format" value="false" />
     <property name="cidr.known.project.marker" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/../dh" />
     <property name="nodejs_package_manager_path" value="npm" />
     <property name="org.rust.cargo.project.model.PROJECT_DISCOVERY" value="true" />
     <property name="settings.editor.selected.configurable" value="project.propVCSSupport.DirectoryMappings" />
@@ -89,7 +89,9 @@
       <workItem from="1671782609062" duration="7077000" />
       <workItem from="1671866235837" duration="3064000" />
       <workItem from="1671869556720" duration="1346000" />
-      <workItem from="1671932300730" duration="11910000" />
+      <workItem from="1671932300730" duration="12549000" />
+      <workItem from="1672015912480" duration="638000" />
+      <workItem from="1672031124300" duration="13556000" />
     </task>
     <servers />
   </component>

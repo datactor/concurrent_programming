@@ -734,3 +734,308 @@ pub fn some_func9_129p() {
 /// 다음은 송신단용 Sender type
 use std::collections::LinkedList;
 
+// 송신단을 위한 타입 1
+#[derive(Clone)]
+pub struct Sender<T> {
+    sem: Arc<Semaphore>, // 유한성을 구현하는 세마포어
+    buf: Arc<Mutex<LinkedList<T>>>, // Queue
+    cond: Arc<Condvar>, // 읽기 측의 조건 변수
+}
+
+impl<T: Send> Sender<T> { // 2
+    // 송신 함수
+    pub fn send(&self, data: T) {
+        self.sem.wait(); // Queue의 최대값에 도달하면 대기 3
+        let mut buf = self.buf.lock().unwrap();
+        buf.push_back(data); // 인큐
+        self.cond.notify_one(); // 읽기 측에 대한 알림 4
+    }
+}
+// 1) 유한성을 구현하는 세마포어를 필드로 갖는 Sender type. 큐는 linked list로 저장, cond 변수는 읽기 측에서
+//    대기하는 경우에 알릴 때 이용함. 송신단을 클론해서 사용할 수 있도록 dervie로 clone트레잇 지정. Rust의
+//    표준 채널도 송신단만 클론 가능하다.
+// 2) Sender impl. type T에 Send trait을 요구함으로써 채널을 이용한 데이터 송신이 허용된 type만 송신 가능.
+// 3) Semaphore를 이용해 Queue의 최대값을 감지하고 대기.
+// 4) Queue에 넣은 뒤 cond var를 이용해 읽기 측에 알림.
+// Rust에서는 Send trait을 구현하는 type만 채널을 통해 송수신 가능. 이 제한은 Sender type의 T에 trait을 요구하는
+// 것으로 수행할 수 있음. 이 제한으로 송수신해서는 안되는 데이터의 잘못된 송수신을 컴파일 시 발견할 수 있음.
+//
+// 송수신이 금지된 타입 중 하나로 RC type이 있음. RC type은 스레드 세이프하지 않은  RC 기반의 스마트 포인터임.
+// 따라서 RC type의 값을 송수신하면 여러 스레드가 해당 참조를 저장하게 되므로 정의되지 않은 작동이 된다.
+//
+// 다음은 수신단용 Receiver type
+pub struct Receiver<T> { // 수신단을 위한 type 1
+    sem: Arc<Semaphore>, // 유한성을 구현하는 세마포어
+    buf: Arc<Mutex<LinkedList<T>>>, // Queue
+    cond: Arc<Condvar>, // 읽기 측의 Cond var
+}
+
+impl<T> Receiver<T> {
+    pub fn recv(&self) -> T {
+        let mut buf = self.buf.lock().unwrap();
+        loop {
+            // Queue에서 추출 2
+            if let Some(data) = buf.pop_front() {
+                self.sem.post(); // 3
+                return data;
+            }
+            // Queue가 빈 경우 wait 4
+            buf = self.cond.wait(buf).unwrap();
+        }
+    }
+}
+// 1) Sender type과 완전히 동일한 필드
+// 2) 수신 측에서는 Queue인 linked list의 앞에서부터 데이터를 꺼냄(선입선출).
+// 3) 큐에서 데이터를 꺼낸 경우에는 세마포어의 post 함수를 호출해 세마포어의 카운터를 1 감소시킨다. 이렇게 함으로써
+//    새로운 송신을 수행할 수 있게 됨.
+// 4) 만약 Queue가 비어있다면 송신용 cond var로 대기한다.
+// 수신시 세마포어의 카운터를 감소시킴으로써 큐가 비어있음을 나타냄. 만약 큐가 가득 찬 경우에는 송신측은 세마포어에 의해
+// 대기한다. 이와 동일한 것을 수행하는 채널을 Rust에서는 std::sync::mpsc::sync_channel 함수를 통해 생성할 수 있음.
+use std::sync::mpsc::sync_channel;
+// sync_channel은 8장에서 다시 보자
+// *CAUTION_ 여기서는 세마포어의 예로 유한채널을 사용했지만, 실제로는 표준 sync_channel을 이용하는 것이 실행 속도면에서
+//           우수함.
+//
+// 다음으로 channel 생성을 수행하는 함수를 살펴보자. 이 함수는 Queue의 최대 수를 받아 Sender와 Receiver type의 값을 생성한다.
+pub fn channel<T>(max: isize) -> (Sender<T>, Receiver<T>) {
+    assert!(max > 0);
+    let sem = Arc::new(Semaphore::new(max));
+    let buf = Arc::new(Mutex::new(LinkedList::new()));
+    let cond = Arc::new(Condvar::new());
+    let tx = Sender {
+        sem: sem.clone(),
+        buf: buf.clone(),
+        cond: cond.clone(),
+    };
+    let rx = Receiver { sem, buf, cond };
+    (tx, rx)
+}
+// 위의 채널 생성 함수로 채널을 이용해보자
+pub fn some_func10_133p() {
+    let (tx, rx) = channel(4);
+    let mut v = Vec::new();
+
+    // 수신용 스레드
+    let t = thread::spawn(move || {
+        let mut cnt = 0;
+        while cnt < NUM_THREADS * NUM_LOOP {
+            let n = rx.recv();
+            println!("recv: n = {:?}", n);
+            cnt += 1;
+        }
+    });
+
+    v.push(t);
+
+    // 송신용 스레드
+    for i in 0..NUM_THREADS {
+        let tx0 = tx.clone();
+        let t = thread::spawn(move || {
+            for j in 0..NUM_THREADS {
+                tx0.send((i, j));
+            }
+        });
+        v.push(t);
+    }
+
+    for t in v {
+        t.join().unwrap();
+    }
+}
+// 생산자-소비자 모델을 명확하게 기술하기 위해 수신용 스레드를 1개만 생성하고 송신용 스레드를 NUM_THREADS(8)만큼 생성.
+// 생산자 능력이 소비자보다 높고 채널의 큐 크기에 제한이 없는 경우 큐 크기가 넘쳐 메모리 한계까지 소비해 언젠가는
+// 프로그램이 정지된다. 하지만 큐 크기에 제한을 설정함으로써 그런 사고를 방지할 수 있음.
+// 채널의 고속화 방법으로서는 벌크 데이터 전송(bulk data transfer)라 불리는 방법이 알려져 있다. 일반적으로 Mutex
+// 등의 락 획득은 비용이 높은 계산이다. 그래서 락 획득 횟수를 줄이기 위해 여러 데이터를 일괄로 큐에 넣으면 전송 처리량의
+// 향상을 기대할 수 있다. 단 소수의 데이터만 있는 경우에는 일정 시간이 지난 후 큐에 넣는 등의 개선이 필요하다.
+
+
+// 3.9 베이커리 알고리즘(Leslie Lamport's Bakery Algorithm)
+// 지금까지 위에서 본 알고리즘은 lock xchg나 LL/SC등 CPU가 제공하는 아토믹 명령을 이용한 동기 처리 방법이었음.
+// 하지만 아토믹 명령을 지원하지 않는 하드웨어도 있으며 그런 경우에는 하드웨어의 아토믹 명령을 이용하지 않는 동기 처리
+// 방법이 이용됨. 그 대표 알고리즘이라고 할 수 있는 래슬리 램포트의 Bakery 알고리즘을 살펴보자
+// 베이커리 알고리즘 외에도 데커 알고리즘이나 피터슨 알고리즘 등 아토믹 명령을 이용하지 않는 동기처리 알고리즘도 있음.
+// 베이커리 알고리즘은 실제로 Arm Trusted Firmware 등에 구현되어 있다!
+//
+// *어불성설인 것이.. 이런 알고리즘을 빵집에서 이용하진 않음(빵집이 너무많아 규모가 이정도로 크지 않음) 차라리 병원이나
+// 은행 등에서 번호표를 뽑아 대기하는 시스템이라고 보면 된다.
+//
+// 다음은 Rust로 구현한 베이커리 알고리즘이다. 사실 현대적인 CPU에서는 out-of-order 실행이라 불리는 고속화 방법이
+// 적용되어 있으며, 메모리 접근이 반드시 명령어 순으로 실행되지는 않음. 그렇기 때문에 원래의 베이커리 알고리즘은
+// 현재 CPU에서는 올바르게 작동하지 않기 때문에 메모리 접근의 작동 순서를 보증하기 위한 명령을 이용해야 함.
+// 다음은 out-of-order를 수행하는 CPU에서도 올바르게 작동하는 베이커리 알고리즘이다.
+use std::ptr::{read_volatile, write_volatile}; // 최적화 억제 읽기/쓰기용 1
+use std::sync::atomic::{fence}; // 메모리 배리어용 2
+
+const NUM_THREADS_2: usize = 4;
+
+// volatile용 매크로 3
+// Rust macros are expanded into abstract syntax trees, rather than string preprocessing,
+// so you don't get unexpected precedence bugs.
+macro_rules! read_mem { // The args of a macro are prefixed by a $ and type annotated with a designator
+    ($addr: expr) => { // This macro takes an argument of designator `expr`, () indicates the args that macro takes.
+        unsafe {
+            read_volatile($addr)
+        }
+        // pub unsafe fn read_volatile<T>(src: *const T) -> T
+    } // expr(expression)
+}
+macro_rules! write_mem {
+    ($addr: expr, $val: expr) => {
+        unsafe {
+            write_volatile($addr, $val)
+        }
+        // pub unsafe fn write_volatile<T>(dst: *mut T, src: T)
+    }
+}
+
+// 베이커리 알고리즘용 type 4
+struct BakeryLock {
+    entering: [bool; NUM_THREADS_2], // i번째 스레드가 티켓을 획득 중이면 entering[i] = true
+    tickets: [Option<u64>; NUM_THREADS_2], // i번째 스레드의 티켓은 ticket[i]
+}
+
+impl BakeryLock {
+    // 락 함수, idx는 스레드 번호
+    fn lock(&mut self, idx: usize) -> LockGuard {
+        ///////////////////// 여기부터 티켓 취득 처리 5
+        fence(Ordering::SeqCst); // 스레드 idx가 티켓 취득 중 상태임을 나타내기 위해 entering[idx]를
+        write_mem!(&mut self.entering[idx], true); // true로 설정하는데, 그 전후에 메모리 배리어를 걸어둬서
+        fence(Ordering::SeqCst); // out-of-order에서의 메모리 읽기 및 쓰기가 수행되는 것을 방지함.
+
+        // 현재 배포되어 있는 티켓의 최대값 취득 6
+        let mut max = 0;
+        for i in 0..NUM_THREADS_2 {
+            if let Some(t) = read_mem!(&self.tickets[i]) {  // 배포되어 있는 티켓값 중,
+                max = max.max(t);                           // 최대값을 max로 가져옴
+            }
+        }
+        // 최대값 + 1을 자신의 티켓 번호로 한다. 7
+        let ticket = max + 1;
+        write_mem!(&mut self.tickets[idx], Some(ticket));
+
+        fence(Ordering::SeqCst); // 티켓을 획득한 것을 나타내기 위해 entering[idx]를 false로 설정.
+        write_mem!(&mut self.entering[idx], false); // 8 또한 설정 전후로 메모리 배리어 수행(5와 같은 맥락)
+        fence(Ordering::SeqCst);
+
+        ///////////////////// 여기서부터 대기 처리 9
+        for i in 0..NUM_THREADS_2 {
+            if i == idx {
+                continue;
+            }
+
+            // 스레드 i가 티켓 취득 중이면 대기
+            while read_mem!(&self.entering[i]) {} // 10
+
+            loop {
+                // 스레드 i와 자신의 순서를 비교해 자신의 순서가 높거나 스레드 i가 처리 중이 아니면 대기 종료 11
+                match read_mem!(&self.tickets[i]) {
+                    Some(t) => {
+                        // 스레드 i의 티켓 번호보다 자신의 번호가 낮거나 티켓 번호가 같고
+                        // 자신의 스레드 번호가 작으면 대기 종료
+                        if ticket < t ||
+                            (ticket == t && idx < i) { // 이것은 타이밍에 따라 같은 티켓 번호를 취득하는 경우가 있기 때문(아토믹이 아닌 것도).
+                            break;
+                        }
+                    }
+                    None => {
+                        // 스레드 i가 처리 중이 아니면 대기 종료
+                        break;
+                    }
+                }
+            }
+        }
+
+        fence(Ordering::SeqCst);
+        LockGuard {
+            idx
+        }
+    }
+}
+
+// 락 관리용 타입 12
+struct LockGuard {
+    idx: usize,
+}
+
+impl Drop for LockGuard {
+    // 락 해제 처리 13
+    // 락 획득 후 자동으로 해제되도록 drop trait 구현. 락 해제는 ticket의 반환을 수행하기 위해 tickets[self.idx]에 None을 저장해서 수행.
+    fn drop(&mut self) {
+        fence(Ordering::SeqCst);
+        write_mem!(&mut LOCK.tickets[self.idx], None);
+    }
+}
+
+// 글로벌 변수 14
+static mut LOCK: BakeryLock = BakeryLock { // mut 글로벌 변수는 권장되는 방법이 아니며, 그 접근 또한 unsafe임. 시연을 위해 작성.
+    entering: [false; NUM_THREADS_2],
+    tickets: [None; NUM_THREADS_2],
+};
+
+static mut COUNT: u64 = 0;
+
+pub fn some_func11_138p() {
+    // NUM_THREADS만큼 스레드 생성
+    let mut v = Vec::new();
+    for i in 0..NUM_THREADS_2 {
+        let th = thread::spawn(move || {
+            // NUM_LOOP만큼 루프 반복하면서 COUNT 증가
+            for _ in 0..NUM_LOOP {
+                // 락 획득
+                let _lock = unsafe { LOCK.lock(i) };
+                unsafe {
+                    let c = read_volatile(&COUNT);
+                    write_volatile(&mut COUNT, c + 1);
+                }
+            }
+        });
+        v.push(th);
+    }
+
+    for th in v {
+        th.join().unwrap();
+    }
+
+    println!(
+        "COUNT = {} (expected = {})",
+        unsafe { COUNT },
+        NUM_LOOP * NUM_THREADS_2
+    );
+}
+// 1) 컴파일러에 의한 최적화를 억제하고 메모리 읽기/쓰기를 수행하는 read_volatile과 write_volatile 함수 import
+// 2) 메모리 배리어용 fence 함수 import (메모리 배리어는 4.7절에서 자세히)
+// 3) volatile용 매크로인 read_mem과 write_mem 매크로 정의
+// 4) 베이커리 알고리즘에서 이용하는 BakeryLock type 정의
+// 5) 티켓 취득 처리, 스레드 idx가 티켓 취득 중 상태임을 나타내기 위해 entering[idx]를 true로 설정. 또한 설정
+//    전후에는 메모리 배리어를 수행해 out-of-order에서의 메모리 읽기 및 쓰기가 수행되는 것을 방지함.
+// 6) 현재 배포되어 있는 티켓의 최대값을 취득
+// 7) 자신의 티켓 번호를 최대값 +1로 설정함.
+// 8) 티켓을 획득한 것을 나타내기 위해 entering[idx]를 false로 설정. 또한 설정 전후로 메모리 배리어를 수행함.
+// 9) 대기 처리. 자신보다 낮은 번호의 티켓을 가진 스레드가 있는 경우 대기함.
+// 10) i번째 스레드가 티켓 취득 중이면 대기한다.
+// 11) 자신의 티켓 번호와 스레드 i의 티켓 번호를 비교해 대기. 만약 자신의 티켓 번호가 스레드 i의 티켓 번호보다 작다면
+//     대기 종료. 그리고 티켓 번호가 같아도 자신의 스레드 번호가 작은 경우 마찬가지로 대기 종료. 이것은 타이밍에 따라
+//     같은 티켓 번호를 취득하는 경우가 있기 때문. 그 외의 경우에는 i번째 스레드가 티켓을 반환 또는 다시 티켓을 취득
+//     할 때까지 대기함.
+// 12) 락 관리용 타입
+// 13) 락 획득 후 자동으로 해제되도록 Drop trait 구현. 락 해제는 티켓의 반환을 수행하기 위해 tickets[self.idx]에
+//     None을 저장해서 수행함.
+// 14) 글로벌 변수 정의. Rust에서는 뮤터블한 글로벌 변수 이용을 권장하지 않으며 그 접근은 모두 unsafe가 되지만
+//     여기서는 보여주기 위해 사용했음. LOCK이 락을 수행하기 위한 공유 변수이며, COUNT는 스레드별 증가를 수행하기
+//     위한 공유 변수다.
+// 요약
+// 1. read_mem!과 write_mem! 매크로를 정의한 것은 read_volatile과 write_volatile이 함수여서 unsafe를 여러 차례
+//    지정해야 하며 그로 인해 코드가 장황해지기 때문.
+//    함수가 아닌 매크로로 한 것은 함수로 만들 경우 컴파일러가 최적화를 수행할 가능성이 있어 이를 방지하기 위함임!
+// 2. BakeryLock type은 entring과 tickets라는 배열을 가지고 있으며, 그 요소 수는 스레드 수와 같음. entering은
+//    해당 요소 번호읫 ㅡ레드가 현재 티켓을 취득하고 잇는지 나타내는 배열이다. 이는 병원에서 접수를 하고 티켓을 발행하는
+//    상태에 해당한다. tickets는 해당 요소 번호의 스레드가 가진 티켓에 쓰인 번호를 나타내는 배열이다. 즉, i번째 스레드의
+//    티켓은 tickets[i]로 얻을 수 있음. 단, 대응하는 스레드가 티켓을 가지고 있지 않을 때의 값은 None이다.
+// 3. 락 관리용 type인 LockGuard type은 단순히 락 취득 중인 스레드 번호를 변수 idx에 저장한다. 그리고 LockGuard
+//    type에는 Drop trait이 구현되어 있음. Drop trait을 구현하면 스코프에서 벗어날 때 특정한 처리를 수행할 수
+//    있도록 지정할 수 있다. 즉 C++언어의 destructor를 구현할 수 있는 것과 비슷하다.
+//
+// 여기까지 베이커리 알고리즘이었음. 여기에서는 메모리 배리어 처리를 사용했지만 이를 제거했을 때 출력이 어떻게 달라지는지
+// 확인해보자. 또한 read_mem과 write_mem 매크로 또한 함수로 바꿔보자. 꼭 시도해보자!!! 특히 out-of-order 실행을
+// 적극적으로 수행하는 AArch64에서는 그 차이를 보다 명확하게 알 수 있을지도?
