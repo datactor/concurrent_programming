@@ -1,6 +1,7 @@
 mod ch01_concurrency_and_parallelism;
 mod ch02_basic_programming;
 mod ch03_synchronous_processing01;
+mod ch04_bugs_and_problems;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
@@ -40,5 +41,8 @@ mod tests {
         ch03_synchronous_processing01::some_func8_127p();
         // ch03_synchronous_processing01::some_func9_129p();
         ch03_synchronous_processing01::some_func11_138p();
+        // ch04_bugs_and_problems::func_144p();
+        // ch04_bugs_and_problems::func_145p();
+        ch04_bugs_and_problems::func_146p();
     }
 }

@@ -880,6 +880,7 @@ macro_rules! read_mem { // The args of a macro are prefixed by a $ and type anno
         // pub unsafe fn read_volatile<T>(src: *const T) -> T
     } // expr(expression)
 }
+
 macro_rules! write_mem {
     ($addr: expr, $val: expr) => {
         unsafe {
@@ -887,6 +888,25 @@ macro_rules! write_mem {
         }
         // pub unsafe fn write_volatile<T>(dst: *mut T, src: T)
     }
+}
+
+// unsafe 매크로 -> safe 함수
+pub fn read(src: &Option<u64>) -> Option<u64> {
+    *src
+}
+
+pub fn read2(src: &bool) -> bool {
+    *src
+}
+
+pub fn write(src: &mut Option<u64>, dst: Option<u64>) -> Option<u64> {
+    *src = dst;
+    dst
+}
+
+pub fn write2(src: &mut bool, dst: bool) -> bool {
+    *src = dst;
+    dst
 }
 
 // 베이커리 알고리즘용 type 4
@@ -900,22 +920,32 @@ impl BakeryLock {
     fn lock(&mut self, idx: usize) -> LockGuard {
         ///////////////////// 여기부터 티켓 취득 처리 5
         fence(Ordering::SeqCst); // 스레드 idx가 티켓 취득 중 상태임을 나타내기 위해 entering[idx]를
-        write_mem!(&mut self.entering[idx], true); // true로 설정하는데, 그 전후에 메모리 배리어를 걸어둬서
+        // write_mem!(&mut self.entering[idx], true); // true로 설정하는데, 그 전후에 메모리 배리어를 걸어둬서
+        // unsafe 매크로 -> safe 함수
+        write2(&mut self.entering[idx], true);
         fence(Ordering::SeqCst); // out-of-order에서의 메모리 읽기 및 쓰기가 수행되는 것을 방지함.
 
         // 현재 배포되어 있는 티켓의 최대값 취득 6
         let mut max = 0;
         for i in 0..NUM_THREADS_2 {
-            if let Some(t) = read_mem!(&self.tickets[i]) {  // 배포되어 있는 티켓값 중,
-                max = max.max(t);                           // 최대값을 max로 가져옴
+            // if let Some(t) = read_mem!(&self.tickets[i]) {  // 배포되어 있는 티켓값 중,
+            //     max = max.max(t);                           // 최대값을 max로 가져옴
+            // }
+            // unsafe 매크로 -> safe 함수
+            if let Some(t) = read(&self.tickets[i]) {
+                max = max.max(t);
             }
         }
         // 최대값 + 1을 자신의 티켓 번호로 한다. 7
         let ticket = max + 1;
-        write_mem!(&mut self.tickets[idx], Some(ticket));
+        // write_mem!(&mut self.tickets[idx], Some(ticket));
+        // unsafe 매크로 -> safe 함수
+        write(&mut self.tickets[idx], Some(ticket));
 
         fence(Ordering::SeqCst); // 티켓을 획득한 것을 나타내기 위해 entering[idx]를 false로 설정.
-        write_mem!(&mut self.entering[idx], false); // 8 또한 설정 전후로 메모리 배리어 수행(5와 같은 맥락)
+        // write_mem!(&mut self.entering[idx], false); // 8 또한 설정 전후로 메모리 배리어 수행(5와 같은 맥락)
+        // unsafe 매크로 -> safe 함수
+        write2(&mut self.entering[idx], false);
         fence(Ordering::SeqCst);
 
         ///////////////////// 여기서부터 대기 처리 9
@@ -925,11 +955,15 @@ impl BakeryLock {
             }
 
             // 스레드 i가 티켓 취득 중이면 대기
-            while read_mem!(&self.entering[i]) {} // 10
+            // while read_mem!(&self.entering[i]) {} // 10
+            // unsafe 매크로 -> safe 함수
+            while read2(&self.entering[i]) {};
 
             loop {
                 // 스레드 i와 자신의 순서를 비교해 자신의 순서가 높거나 스레드 i가 처리 중이 아니면 대기 종료 11
-                match read_mem!(&self.tickets[i]) {
+                // match read_mem!(&self.tickets[i]) {
+                // unsafe 매크로 -> safe 함수
+                match read(&self.tickets[i]) {
                     Some(t) => {
                         // 스레드 i의 티켓 번호보다 자신의 번호가 낮거나 티켓 번호가 같고
                         // 자신의 스레드 번호가 작으면 대기 종료
