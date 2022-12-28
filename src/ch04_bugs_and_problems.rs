@@ -5,6 +5,8 @@
 // 마지막으로 CPU의 out-of-order 실행을 설명하고, 동시성 프로그래밍에서의 문제점 및 memory barrier를 이용한
 // 해결법을 익혀보자
 
+use std::sync::Arc;
+
 /// 4.1 deadlock(전이 대상이 없는 상태)
 /// 식사하는 철학자 문제
 /// 철학자는 포크 2개를 동시에 들어야 본인 앞의 음식을 먹을 수 있음.
@@ -280,13 +282,86 @@ pub fn func_152p() {
             self.available[resource] += 1;
         }
     }
+    // 여기서 중요한 것은 is_safe함수로, 대출 가능한 리소스와 대출을 시뮬레이션 함(iter로 전체 돌리고 찾을 경우 break).
+    // 즉, 대출 가능한 경우 필요한 스레드에 대출하고, 해당 스레드의 리소스를 모두 반환 받는 조작을 반복할 때 모든 스레드가
+    // 리소스를 확보할 수 있는지 검사함. take 함수는 리소스를 1개 확보(은행원 입장에서는 대출해줌)하는 함수이며, 확보를
+    // 가정했을 때 안전한지 검사하여 안전하다고 판단되었을 때만 리소스를 확보함. 여기서 '안전하다(is_safe() == true)'란
+    // 모든 스레드가 리소스를 확보할 수 있는 상태를 가리킴.
+    // 이 알고리즘의 핵심은 필요한 리소스를 대출할 수 있는 스레드는 처리를 마치는 즉시 리소스를 반환한다는 제약임.
+    // 은행원은 보유한 리소스와 각 스레드에서 필요로 하는 리소스를 비교하여 대출할 수 있는 스레드에 리소스를 분배한 뒤
+    // 현재 대출한 리소스를 포함한 모든 리소스를 반환받는 상황을 반복해 예측함. 만약 대출할 수 없는 상황에 빠지면
+    // 데드락이나 starvation상태가 된다고 예측할 수 있음.
+
+    // Resource struct를 Arc와 Mutex로 감싼 Banker struct 및 식사하는 철학자 문제를 Banker's 알고리즘으로 구현
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    pub struct Banker<const NRES: usize, const NTH: usize> {
+        resource: Arc<Mutex<Resource<NRES, NTH>>>,
+    }
+
+    impl<const NRES: usize, const NTH: usize> Banker<NRES, NTH> {
+        pub fn new(available: [usize; NRES], max: [[usize; NRES]; NTH]) -> Self {
+            Banker {
+                resource: Arc::new(Mutex::new(Resource::new(available, max))),
+            }
+        }
+
+        pub fn take(&self, id: usize, resource: usize) -> bool {
+            let mut r = self.resource.lock().unwrap();
+            r.take(id, resource)
+        }
+
+        pub fn release(&self, id: usize, resource: usize) {
+            let mut r = self.resource.lock().unwrap();
+            r.release(id, resource)
+        }
+    }
+
+    // 156p
+    use std::thread;
+
+    const NUM_LOOP: usize = 100_000;
+
+    // 이용 가능한 포크 수, 철학자가 이용하는 포크 최대 수 설정. 철학자 2명, 리소스 2개로 초기화. 첫번째 인수
+    // [1, 1]은 철학자가 가진 포크 수이며, 두번째 인수 [[1, 1], [1, 1]]는 철학자 1과 2가 필요로하는 포크의 최대 값.
+    let banker = Banker::<2, 2>::new([1, 1], [[1, 1], [1, 1]]);
+    let banker0 = banker.clone();
+
+    let philosopher0 = thread::spawn(move || {
+        for _ in 0..NUM_LOOP {
+            // 포크 0과 1을 확보. 철학자는 take 함수로 포크를 얻으며 포크를 얻을 수 있을때까지 spin함.
+            // 리소스 확보가 성공했을 때는 true가 반환되어 while문을 빠져나옴. 이때 취득할 스레드 번호(id)와
+            // 포크 번호(resource)를 take 함수에 전달함.
+            while !banker0.take(0, 0) {}
+            while !banker0.take(0, 1) {}
+
+            println!("0: eating");
+
+            // 포크 0과 1을 반환. 포크를 얻으면 식사를 한 뒤 release 함수로 포크를 반환함.
+            banker0.release(0, 0);
+            banker0.release(0, 1);
+        }
+    });
+
+    let philosopher1 = thread::spawn(move || {
+        for _ in 0..NUM_LOOP {
+            // 포크 0과 1을 확보
+            while !banker.take(1, 1) {}
+            while !banker.take(1, 0) {}
+
+            println!("1: eating");
+
+            // 포크 1과 0을 반환
+            banker.release(1, 1);
+            banker.release(1, 0);
+        }
+    });
+
+    philosopher0.join().unwrap();
+    philosopher1.join().unwrap();
 }
-// 여기서 중요한 것은 is_safe함수로, 대출 가능한 리소스와 대출을 시뮬레이션 함(iter로 전체 돌리고 찾을 경우 break).
-// 즉, 대출 가능한 경우 필요한 스레드에 대출하고, 해당 스레드의 리소스를 모두 반환 받는 조작을 반복할 때 모든 스레드가
-// 리소스를 확보할 수 있는지 검사함. take 함수는 리소스를 1개 확보(은행원 입장에서는 대출해줌)하는 함수이며, 확보를
-// 가정했을 때 안전한지 검사하여 안전하다고 판단되었을 때만 리소스를 확보함. 여기서 '안전하다(is_safe() == true)'란
-// 모든 스레드가 리소스를 확보할 수 있는 상태를 가리킴.
-// 이 알고리즘의 핵심은 필요한 리소스를 대출할 수 있는 스레드는 처리를 마치는 즉시 리소스를 반환한다는 제약임.
-// 은행원은 보유한 리소스와 각 스레드에서 필요로 하는 리소스를 비교하여 대출할 수 있는 스레드에 리소스를 분배한 뒤
-// 현재 대출한 리소스를 포함한 모든 리소스를 반환받는 상황을 반복해 예측함. 만약 대출할 수 없는 상황에 빠지면
-// 데드락이나 starvation상태가 된다고 예측할 수 있음.
+// 각 스레드는 리소스를 얻어 처리하고, 리소스를 반환하는 동작을 반복한다. 이 코드는 데드락에 빠지지 않고 마지막까지 처리를
+// 진행한다. 이처럼 은행원 알고리즘을 이용해 데드락을 회피할 수 있음. 그러나 은행원 알고리즘을 사용하기 위해서는 사전에
+// 작동하는 스레드 수와 각 스레드가 필요로 하는 리소스의 최대값을 파악하고 있어야 하는 단점이 있음. 데드락을 감지하는
+// 다른 방법으로는 리소스 확보에 대한 플래그를 생성해 순환적인 리소스 확보를 하고 있지 않은지 검사하는 방법이 알려져 있음.

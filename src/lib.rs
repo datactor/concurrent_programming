@@ -44,5 +44,6 @@ mod tests {
         // ch04_bugs_and_problems::func_144p();
         // ch04_bugs_and_problems::func_145p();
         ch04_bugs_and_problems::func_146p();
+        ch04_bugs_and_problems::func_152p();
     }
 }
