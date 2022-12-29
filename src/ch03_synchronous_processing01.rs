@@ -1,3 +1,5 @@
+// c예제 -> rust로 치환(C언어에 경험이 없어 의도와 다른 번역이 있을 수 있음)
+
 // 3. 동기 처리 1
 // 학습 개요
 // 여러 프로세스 사이에 타이밍 동기화, 데이터 업데이트 등을 협조적으로 수행하는 처리를 synchronous processing이라 부름.
@@ -240,11 +242,11 @@ pub fn some_func2(mut lock: bool) {
 // 위의 fn mutex02()에서는 락을 얻을 수 있을때까지 루프(재귀)를 반복했음. 이렇게 리소스가 비는 것을 기다리며(polling)
 // 확인하는 락 획득 방법을 spinlock이라 부른다. 전형적으로 스핀락용 API는 lock 획득용과 lock 해제용 함수 두가지가
 // 제공되며 이들은 다음 코드와 같이 기술된다. 이 알고리즘에서는 bool type의 공유변수 lock을 하나 이용하며 초깃값은 false이다.
-fn spinlock_acquire(mut lock: bool) {
+pub fn spinlock_acquire(mut lock: bool) {
     while test_and_set(lock) {} // 1
 }
 
-fn spinlock_release(mut lock: bool) {
+pub fn spinlock_release(mut lock: bool) {
     tas_release(lock); // 2
 }
 // 1) 공유 변수에 대한 포인터를 받아 TAS를 이용해 락을 획득할 때까지 루프를 돌림
@@ -252,7 +254,7 @@ fn spinlock_release(mut lock: bool) {
 //
 // 코드는 정상작동하지만 일반적으로 아토믹 명령은 실행 속도상의 페널티가 큼. 그래서 TAS를 호출하기 전에 검사를 하고 나서
 // TAS를 수행하도록 개선할 수 있으며 개선한 결과는 다음 코드와 같음.
-fn spinlock_acquire2(mut lock: bool) { // c에서는 인자를 volatile 키워드를 붙여 최적화를 막음
+pub fn spinlock_acquire2(mut lock: bool) { // c에서는 인자를 volatile 키워드를 붙여 최적화를 막음
     loop {
         while lock {}; // 1
         if !test_and_set(lock) {
@@ -261,7 +263,7 @@ fn spinlock_acquire2(mut lock: bool) { // c에서는 인자를 volatile 키워�
     }
 }
 
-fn spinlock_release2(mut lock: bool) {
+pub fn spinlock_release2(mut lock: bool) {
     tas_release(lock);
 }
 // 1) lock 변수가 false가 될때까지 루프를 돌기 때문에 아토믹 명령을 불필요하게 호출하는 횟수를 줄임.
@@ -371,7 +373,7 @@ pub fn some_func4() {
 // programming에서는 조건 변수라고 부르며 조건 변수를 기반으로 '프로세스의 대기를 수행'함.
 // 106p의 조건 변수를 C로 풀어낸 예제가 있으니 살펴보자.
 // Pthreads에서가 아닌 커스텀 조건변수 ready를 정의하는 이유? producer 함수를 이용한 데이터 생성이 consumer
-// 스레드 생성 이전에 실행될 가능성이 있기 때문. Pthreads의 wait는 의사 각성이(spurious wakeup)라는 불리는 현상이 일어날 가능성이 있음.
+// 스레드 생성 이전에 실행될 가능성이 있기 때문. Pthreads의 wait는 의사 각성(spurious wakeup)이라 불리는 현상이 일어날 가능성이 있음.
 // 4.5절에서 보게 되겠지만 그전에 구글링해보자.
 // spurious wakeup은 아무 이유 없이 깨어난 것처럼 보이기 때문에 위와 같은 이름으로 불리지만, 실제로는 이유가 있음.
 // 일반적으로 조건 변수가 신호를 받은 타이밍과 대기 중인 스레드가 마지막으로 실행될 타이밍 사이에 다른 스레드가
