@@ -1,5 +1,3 @@
-// c예제 -> rust로 치환(C언어에 경험이 없어 의도와 다른 번역이 있을 수 있음)
-
 // ch04 동시성 프로그래밍 특유의 버그와 문제점
 // 개요
 // deadlock, livelock, starvation 등 동기 처리에서의 기본적인 문제들을 먼저 알아본 후, recursive lock,
