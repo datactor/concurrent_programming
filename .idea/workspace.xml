@@ -11,12 +11,7 @@
   <component name="ChangeListManager">
     <list default="true" id="74a9b0f8-656d-49d7-b93a-58a2f3b2a3aa" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ch02_basic_programming.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ch02_basic_programming.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ch03_synchronous_processing01.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ch03_synchronous_processing01.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ch04_bugs_and_problems.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ch04_bugs_and_problems.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ch05_async_programming.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ch05_async_programming.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -63,7 +58,7 @@
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="cf.first.check.clang-format" value="false" />
     <property name="cidr.known.project.marker" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/../dh" />
     <property name="nodejs_package_manager_path" value="npm" />
     <property name="org.rust.cargo.project.model.PROJECT_DISCOVERY" value="true" />
     <property name="settings.editor.selected.configurable" value="project.propVCSSupport.DirectoryMappings" />
@@ -105,7 +100,9 @@
       <workItem from="1672275943059" duration="17000" />
       <workItem from="1672291683132" duration="24260000" />
       <workItem from="1672359985256" duration="39000" />
-      <workItem from="1672380780688" duration="7338000" />
+      <workItem from="1672380780688" duration="7964000" />
+      <workItem from="1672451219265" duration="190000" />
+      <workItem from="1672458750359" duration="4089000" />
     </task>
     <servers />
   </component>

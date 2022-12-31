@@ -71,14 +71,104 @@ pub fn func_178p() {
 // Connection closed by foreign host.
 //
 /// concurrent server는 client로부터의 connection request, data arriving 등의 처리를 event 단위로 세세하게
-/// 분류하여 event에 따라 처리를 실행할 수 있다. 네트워크 소켓이나 파일 등의 IO event 감시에는 유닉스 계열의 OS에서는
-/// select나 poll, 리눅스에서는 epoll, BSD 계열에서는 kqueue라는 시스템 콜을 이용할 수 있다. select나 poll은
-/// OS에 의존하지 않고 이용할 수 있지만 속도가 느리고, epoll이나 kqueue는 속도가 빠르지만 OS에 의존한다.
+/// 분류하여 event에 따라 처리를 실행할 수 있다.
 ///
-/// IO event 감시는 파일 descripter를 감시하는 것이다. 예를 들어 여러 TCP connection이 존재할 경우 server는
-/// 여러 파일 descripter를 가진다. 이들 파일 descripter에 대해 읽기나 쓰기 가능 여부를 select 등의 함수를 이용해
-/// 판정할 수 있다. 다음 그림은 epoll, kqueue, select의 동작 개념을 보여준다.
+/// 네트워크 소켓이나 파일 등의 IO event 감시 시스템 콜
+/// - 유닉스 계열의 OS: select나 poll - OS에 의존하지 않고 이용할 수 있지만 속도가 느림.
+/// - 리눅스: epoll - 속도가 빠르지만 OS에 의존함.
+/// - BSD 계열 OS: kqueue - 속도가 빠르지만 OS에 의존함
 ///
-fn func_() {
+/// IO event 감시는 파일 descriptor를 감시하는 것이다. 예를 들어 여러 TCP connection이 존재할 경우 server는
+/// 여러 파일 descriptor를 가진다. 이들 파일 descriptor에 대해 읽기나 쓰기 가능 여부를 select 등의 함수를 이용해
+/// 판정할 수 있다. 다음 그림은 epoll, kqueue, select의 동작 개념을 보여준다(180p 그림 5-1).
+/// 그림에서는 프로세스(유저랜드)에서 IO event 감시 시스템 콜을 이용해 커널 내부로 들어가 프로세스 관련 파일 descriptor
+/// 정보들을 이용해 IO event 감시 시스템 콜을 통한 파일 descriptor 감시를 수행한다. 해당 파일 descriptor를
+/// 읽고 쓰기가 가능하게 된 경우 IO event 감시 시트템 콜을 호출하고 반환한다. 그리고 이 함수들은 읽기만 감시, 쓰기만
+/// 감시, 읽기와 쓰기 모두 감시 등을 상세히 지정할 수 있다.
+///
+/// 다음 코드는 epoll(리눅스 IO event 감시 시스템 콜)을 이용한 병렬 서버 구현 예따. 작동상으로는 앞의 코드와 거의
+/// 비슷하지만 동시에 작동하면서 송수신을 반복하도록 되어 있다는 점이 다르다. 이 코드는 non-blocking 설정을 수행하지
+/// 않으므로 구현이 완성되지 않았지만, 이 부분은 뒤에서 설명할 버전에서 마무리 할 것이다.
+///
+/// - blocking이란 송수신 준비가 되지 않은 상태에서 송수신 함수를 호출하면 해당 함수 호출을 정지하고 송수신 준비가 되었을
+/// 때 재개하는 작동을 말한다. 송수신 준비가 되지 않은 경우에 송수신 함수가 호출되면 OS는 그 함수들을 호출한 OS 프로세스를
+/// 대기 상태로 만들고, 다른 OS 프로세스를 실행한다.
+/// - non-blocking이면 송수신할 수 없는 경우 즉시 함수에서 반환되므로 송수신 함수를 호출해도 OS 프로세스는 대기 상태가 되지 않는다.
+#[test]
+fn func_181p() {
+    use nix::sys::epoll::{
+        epoll_create1, epoll_ctl, epoll_wait, EpollCreateFlags, EpollEvent, EpollFlags, EpollOp
+    };
+    use std::collections::HashMap;
+    use std::io::{BufRead, BufReader, BufWriter, Write};
+    use std::net::TcpListener;
+    use std::os::unix::io::{AsRawFd, RawFd};
 
+    // epoll 플래그 단축 계열
+    let epoll_in = EpollFlags::EPOLLIN;
+    let epoll_add = EpollOp::EpollCtlAdd;
+    let epoll_del = EpollOp::EpollCtlDel;
+
+    // TCP 10000번 포트 리슨
+    let listener = TcpListener::bind("127.0.0.1:10000").unwrap();
+
+    // epoll용 객체 생성. epoll에서는 감시할 socket(파일 descriptor)을 epoll용 객체에 등록한 뒤 감시 대상 event가
+    // 발생할 때까지 대기하고 이벤트 발생 후 해당 이벤트에 대응하는 처리를 수행한다.
+    let epfd = epoll_create1(EpollCreateFlags::empty()).unwrap(); // 1
+
+    // listen용 socket을 감시 대상에 추가 2
+    let listen_fd = listener.as_raw_fd();
+    let mut ev = EpollEvent::new(epoll_in, listen_fd as u64);
+    epoll_ctl(epfd, epoll_Add, listen_fd, &mut ev).unwrap();
+
+    let mut fd2buf = HashMap::new();
+    let mut events = vec![EpollEvent::empty(); 1024];
+
+    // epoll로 이벤트 발생 감시
+    while let Ok(nfds) = epoll_wait(epfd, &mut events, -1) { // 3
+        for n in 0..nfds { // 4
+            if events[n].data() == listen_fd as u64 {
+                // listen socket에 event 5
+                if let Ok((stream, _)) = listener.accept() {
+                    // 읽기, 쓰기 객체 생성
+                    let fd = stream.as_raw_fd();
+                    let stream0 = strea.try_clone().unwrap();
+                    let reader = BufReader::new(stream0);
+                    let writer = BufWriter::new(stream);
+
+                    // fd와 reader, writer의 관계를 만듬
+                    fd2buf.insert(fd, (reader, writer));
+
+                    println!("accept: fd = {}", fd);
+
+                    // fd를 감시 대상에 등록
+                    let mut ev = EpollEvent::new(epoll_in, fd as u64);
+                    epoll_ctl(epfd, epoll_add, fd, &mut ev).unwrap();
+                }
+            } else {
+                // client에서 데이터 도착 6
+                let fd = events[n].data() as RawFd;
+                let (reader, writer) = fd2buf.get_mut(&fd).unwrap();
+
+                // 1행 읽기
+                let mut buf = String::new();
+                let n = reader.read_line(&mut buf).unwrap();
+
+                // connection을 close한 경우 epoll 감시 대상에서 제외한다.
+                if n == 0 {
+                    let mut ev = EpollEvent::new(epoll_in, fd as u64);
+                    epoll_ctl(epfd, epoll_del, fd, &mut ev).unwrap();
+                    fd2buf.remove(&fd);
+                    println!("closed: fd = {}", fd);
+                    continue
+                }
+
+                print!("read: fd = {}, buf = {}", fd, buf);
+
+                // 읽은 데이터를 그대로 쓴다.
+                writer.write(buf.as_bytes()).unwrap();
+                writer.flush().unwrap();
+            }
+        }
+    }
 }
