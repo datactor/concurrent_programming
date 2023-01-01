@@ -95,7 +95,7 @@ pub fn func_178p() {
 /// 대기 상태로 만들고, 다른 OS 프로세스를 실행한다.
 /// - non-blocking이면 송수신할 수 없는 경우 즉시 함수에서 반환되므로 송수신 함수를 호출해도 OS 프로세스는 대기 상태가 되지 않는다.
 #[test]
-fn func_181p() {
+pub fn func_181p() {
     use nix::sys::epoll::{
         epoll_create1, epoll_ctl, epoll_wait, EpollCreateFlags, EpollEvent, EpollFlags, EpollOp
     };
@@ -195,3 +195,158 @@ fn func_181p() {
 // 그리고 POSIX에서도 AIO(Asynchronous IO)라 불리는 API가 존재한다. POSIX AIO에서는 2종류의 비동기 프로그래밍 방법을
 // 선택할 수 있다. 한 가지는 대상이 되는 file descriptor에 대해 callback 함수를 설정하고 event 발생 시 스레드가 생성되어
 // 그 함수가 실행되는 방법이다. 다른 한 가지는 signal로 알리는 방법이다.
+
+/// 5.2 코루틴과 스케줄링
+/// 이 절에서는 코루틴을 스케줄링하는 방법을 알아보자. 코루틴을 이용함으로써 비동기 프로그래밍을 보다 추상적으로 기술함을 목표로 한다.
+///
+/// 5.2.1 couroutine
+/// 코루틴은 다양한 의미로 사용되지만 여기서는 중단과 재개가 가능함 함수를 총칭하는 것으로 하자.
+/// 코루틴을 이용하면 함수를 임의의 시점에 중단하고, 중단한 위치에서 함수를 재개할 수 있다. 코루틴이라는 용어는
+/// 1963년 Conway의 논문에 등장했으며 COBOL과 ALGOL 프로그래밍 언어에 적용되었다.
+///
+/// 현재 코루틴은 대칭 코루틴(symmetric coroutine과 비대칭 코루틴(asymmetric coroutine)으로 분류된다.
+/// - 대칭 코루틴? 함수는 routine과 sub routine이라는 주종관계가 일반적인데 서로 동등한 대칭 관계의 루틴을 말함.
+/// 다음 코드는 대칭 코루틴을 의사 코드로 기술한 예다.
+/// courtine A {
+///     // 무언가 처리
+///     yield to B 2
+///     // 무언가 처리
+///     yield to B 4
+/// }
+/// coroutine B {
+///     // 무언가 처리
+///     yield to A 3
+///     // 무언가 처리
+/// }
+///
+/// yield to A 1
+/// 1) A 호출
+/// 2) B 호출. 처리는 여기서 중단
+/// 3) A의 도중부터 재개. 처리는 여기서 중단
+/// 4) B의 도중부터 재개
+///
+/// 대칭 코루틴(symmetric couroutine)에서는 재개하는 함수명을 명시적으로 지정해서 함수 중단과 재개를 수행한다.
+/// 가장 마지막 행에서 코루틴 A가 실행되어 무언가 처리를 수행하고, yield to B로 코루틴 B의 처리를 시작한다.
+/// 코루틴 B가 실행되면 이번에는 yield to A로 코루틴 A로 처리가 옮겨진다. 이 때 코루틴 A 안의 yield에 의해 중단된
+/// 위치부터 처리가 재개된다. 그 후 다시 코루틴 A의 두 번째 yield to B까지 실행되고 코루틴 B의 yield부터 처리가 재개된다.
+/// 일반적인 함수 호출은 호출원과 호출되는 측이라는 주종 관계가 있지만 대칭 코루틴에서는 서로 동등한 대칭 관계가 된다.
+///
+/// 다음 코드는 비대칭 코루틴의 예를 Python으로 나타낸 것이다. Pytgon에서는 비대칭 코루틴을 generator라고 부르며,
+/// 뒤에서 나올 async/await로 scheduling 가능하도록 수정된 특수한 코루틴을 코루틴이라 부른다.
+/// def hello():
+///     print('Hello,', end='')
+///     yield # 여기서 중단, 재개 1
+///     print('World!')
+///     yield # 여기까지 실행 2
+/// h = hello()  # 1까지 실행
+/// h.__next__() # 1부터 재개하여 2까지 실행
+/// h.__next__() # 2부터 재개
+///
+/// 위 코드는 Hello, World!를 출력할 뿐이지만 yield로 함수의 중단과 재개가 수행된다. yield를 호출하면 함수를 지속하면서
+/// 호출할 객체가 반환되고 해당 객체에 대해 __next__함수를 호출함으로써 지속할 위치부터 재개할 수 있다.
+///
+/// Rust에는 코루틴은 없지만 코루틴과 같은 작동을 하는 함수를 상태를 기다리는 함수로 구현할 수 있다. 다음 코드는 Python의
+/// 코루틴 버전 Hello, World!를 Rust로 구현한 것이다. Rust에는 Future trait이라 불리는 비동기 trait이 있으므로
+/// https://rust-lang.github.io/async-book/02_execution/02_future.html
+/// 여기에서 future를 사용해 보자.
+#[test]
+pub fn func_186p() {
+    use futures::future::{BoxFuture, FutureExt};
+    use futures::task::{waker_ref, ArcWake};
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll};
+
+    struct Hello { // 함수의 상태와 변수를 저장하는 Hello type 정의.
+        state: StateHello, // Hello, World!에는 변수가 없으므로 함수의 실행 위치 상태만 필드로 가진다.
+    }
+
+    // 함수의 실행 상태를 나타내는 StateHello type.
+    enum StateHello {
+        HELLO, // 초기 상태는 Hello 상태고
+        WORLD, // Python version의 첫 번째 yield를 나타내는 상태가 WORLD 상태
+        END,   // 두 번째 yield를 나타내는 상태가 END 상태가 된다.
+    }
+
+    impl Hello {
+        fn new() -> Self {
+            Hello {
+                state: StateHello::HELLO, // 초기 상태
+            }
+        }
+    }
+
+    impl Future for Hello {
+        type Output = ();
+
+        // poll 함수가 실제 함수 호출(Python에서 h = hello()). 인수의 Pin type은 Box등과 같은 type(https://rust-lang.github.io/async-book/04_pinning/01_chapter.html)
+        // Pin type은 내부적인 메모리 복사로의 move를 할 수 없어서 주소 변경을 할 수 없는 type이지만 이것은 Rust 특유의 성질에 속한다.(unpinn을 구현해야함)
+        // _cx는 Waker 및 future의 내부구조부터 파악하고 뜯어 보길 바란다.
+        fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<()> {
+            match (*self).state {
+                StateHello::HELLO => {
+                    println!("Hello, ");
+                    // WORLD 상태로 전이
+                    (*self).state = StateHello::WORLD;
+                    Poll::Pending // 다시 호출 가능
+                }
+                StateHello::WORLD => {
+                    println!("World!");
+                    // END 상태로 전이
+                    (*self).state = StateHello::END;
+                    Poll::Pending // 다시 호출 가능
+                }
+                StateHello::END => {
+                    Poll::Ready(()) // 종료
+                }
+            }
+        }
+    }
+    // 이 구현에서 알 수 있듯이 poll 함수에서는 함수의 상태에 따라 필요한 코드를 실행하고 내부적으로 상태 전이를 수행한다.
+    // 함수가 재실행 가능한 경우 poll 함수는 Poll::Pending을 반환하고, 모두 종료한 경우 Poll::Ready에 반환값을 감싸서 반환한다.
+
+    // 실행 단위. Task type은 async/await에서 프로세스의 실행 단위이고, ArcWake는 프로세스를 scheduling 하기 위한 trait.
+    struct Task {
+        hello: Mutex<BoxFuture<'static, ()>>,
+    }
+
+    impl Task {
+        fn new() -> Self {
+            let hello = Hello::new();
+            Task {
+                hello: Mutex::new(hello.boxed()),
+            }
+        }
+    }
+
+    // 아무것도 하지 않음
+    impl ArcWake for Task {
+        fn wake_by_ref(_arc_self: &Arc<Self>) {}
+    }
+
+    // 초기화
+    let task = Arc::new(Task::new());
+    let waker = waker_ref(&task);
+    let mut ctx = Context::from_waker(&waker); // poll 함수를 실행하려면 Context type값이 필요하므로 여기에서는
+    // 아무것도 하지 않는 Task type을 정의하고 거기에 ArcWake trait을 구현했다. Context type의 값은 ArcWake 참조로부터
+    // 생성할 수 있다.
+    let mut hello = task.hello.lock().unwrap();
+
+    // 정지와 재개 반복. poll 함수를 3번 호출하면 최종적으로 Hello type의 poll 함수가 실행되어 Hello, World!가 표시된다.
+    // 이것은 Python 버전 코드와 그 작동이 완전히 같다.
+    hello.as_mut().poll(&mut ctx);
+    hello.as_mut().poll(&mut ctx);
+    hello.as_mut().poll(&mut ctx);
+}
+// 이렇게 코루틴이 프로그래밍 언어 사양이 아니어도 동등하게 작동하는 함수를 구현할 수 있다. 코루틴을 이용하면 비동기 프로그래밍을
+// 보다 고도로 추상화해 간략하게 기술할 수 있다. 이 절 이후에는 이러한 코루틴 구조를 알아보자.
+
+/// 5.2.2 scheduling
+/// 비대칭 코루틴을 이용하면 중단된 함수를 프로그래머 측에서 자유롭게 재개할 수 있으며, 이 중단과 재개를 스케줄링해서 실행할
+/// 수도 있다. 이렇게 하면 정밀도가 높은 제어는 할 수 없지만 프로그래머는 코루틴 관리에서 해방되어 보다 추상도가 높은 동시 계산을
+/// 기술할 수 있다. 이 절에서는 코루틴을 스케줄링해서 실행하는 방법을 알아보자.
+#[test]
+pub fn func_() {
+
+}
