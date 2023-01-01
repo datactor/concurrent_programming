@@ -86,7 +86,7 @@ pub fn func_178p() {
 /// 읽고 쓰기가 가능하게 된 경우 IO event 감시 시트템 콜을 호출하고 반환한다. 그리고 이 함수들은 읽기만 감시, 쓰기만
 /// 감시, 읽기와 쓰기 모두 감시 등을 상세히 지정할 수 있다.
 ///
-/// 다음 코드는 epoll(리눅스 IO event 감시 시스템 콜)을 이용한 병렬 서버 구현 예따. 작동상으로는 앞의 코드와 거의
+/// 다음 코드는 epoll(리눅스 IO event 감시 시스템 콜)을 이용한 병렬 서버 구현 예다. 작동상으로는 앞의 코드와 거의
 /// 비슷하지만 동시에 작동하면서 송수신을 반복하도록 되어 있다는 점이 다르다. 이 코드는 non-blocking 설정을 수행하지
 /// 않으므로 구현이 완성되지 않았지만, 이 부분은 뒤에서 설명할 버전에서 마무리 할 것이다.
 ///
@@ -112,42 +112,53 @@ fn func_181p() {
     // TCP 10000번 포트 리슨
     let listener = TcpListener::bind("127.0.0.1:10000").unwrap();
 
-    // epoll용 객체 생성. epoll에서는 감시할 socket(파일 descriptor)을 epoll용 객체에 등록한 뒤 감시 대상 event가
-    // 발생할 때까지 대기하고 이벤트 발생 후 해당 이벤트에 대응하는 처리를 수행한다.
-    let epfd = epoll_create1(EpollCreateFlags::empty()).unwrap(); // 1
+    // epoll용 객체 생성. epoll에서는 감시할 socket(파일 descriptor)을 epoll용 객체에 등록한 뒤
+    // 감시 대상 event가 발생할 때까지 대기하고 이벤트 발생 후 해당 이벤트에 대응하는 처리를 수행한다.
+    // epoll 객체 생성은 epoll_create1 함수로 하고, 삭제는 close함수로 한다.
+    let epfd = epoll_create1(EpollCreateFlags::empty()).unwrap();
 
-    // listen용 socket을 감시 대상에 추가 2
-    let listen_fd = listener.as_raw_fd();
+    // 생성한 epoll 객체에 listen용 소켓을 감시 대상으로 등록함.
+    // connection request 도착 감시는 event 종류를 EPOLLIN으로 설정해서 수행한다.
+    let listen_fd = listener.as_raw_fd(); // 여기서 fd는 file descriptor
     let mut ev = EpollEvent::new(epoll_in, listen_fd as u64);
-    epoll_ctl(epfd, epoll_Add, listen_fd, &mut ev).unwrap();
+    // epoll_ctrl 함수는 감시 대상 추가, 삭제, 수정을 하는 함수다.
+    epoll_ctl(epfd, epoll_add, listen_fd, &mut ev).unwrap();
 
     let mut fd2buf = HashMap::new();
     let mut events = vec![EpollEvent::empty(); 1024];
 
-    // epoll로 이벤트 발생 감시
-    while let Ok(nfds) = epoll_wait(epfd, &mut events, -1) { // 3
-        for n in 0..nfds { // 4
-            if events[n].data() == listen_fd as u64 {
-                // listen socket에 event 5
+    // epoll_wait 함수로 event 발생을 감시. 이 함수에서는 두 번째 인수에 전달된 슬라이스에 event가 발생한 파일 descriptor가
+    // 쓰여지고, 발생한 event 수를 Option type으로 반환한다. 세 번째 인수는 timeout 시간이며 밀리초 단위로 지정 가능.
+    // 단 세 번째 인수에 -1을 전달하면 timeout되지 않는다.
+    while let Ok(nfds) = epoll_wait(epfd, &mut events, -1) {
+        for n in 0..nfds { // event가 발생한 file descriptor에 대해 순서대로 처리를 수행한다.
+            let event_data = events[n].data();
+            // 여기서 처리를 listen socket의 event와 client socket의 event로 분리한다.
+            if event_data == listen_fd as u64 { // listen socket의 event일 경우
+                // listen용 socket 처리. 먼저 file descriptor를 취득하고 읽기 쓰기용 객체를 생성한 뒤 epoll_ctl함수로
+                // epoll에 읽기 event를 감시 대상으로 등록한다.
                 if let Ok((stream, _)) = listener.accept() {
                     // 읽기, 쓰기 객체 생성
-                    let fd = stream.as_raw_fd();
-                    let stream0 = strea.try_clone().unwrap();
-                    let reader = BufReader::new(stream0);
-                    let writer = BufWriter::new(stream);
+                    let fd = stream.as_raw_fd(); // raw fd로 key를 만들기 위해 fd를 borrow
+                    let stream0 = stream.try_clone().unwrap(); // 읽기, 쓰기 객체를 분리하기 위한 clone()
+                    let reader = BufReader::new(stream0); // 읽기 객체 생성
+                    let writer = BufWriter::new(stream); // 쓰기 객체 생성
 
                     // fd와 reader, writer의 관계를 만듬
                     fd2buf.insert(fd, (reader, writer));
 
                     println!("accept: fd = {}", fd);
 
-                    // fd를 감시 대상에 등록
+                    // fd를 감시 대상에 등록하기 위해 epollevent 객체 생성
                     let mut ev = EpollEvent::new(epoll_in, fd as u64);
+                    // fd를 감시 대상에 등록
                     epoll_ctl(epfd, epoll_add, fd, &mut ev).unwrap();
                 }
-            } else {
-                // client에서 데이터 도착 6
-                let fd = events[n].data() as RawFd;
+            } else { // client socket의 event일 경우
+                // client용 소켓 처리. client에서 데이터 도착한다면 먼저 1행을 읽는다. 이때 connection이 close 상태면
+                // read_line()의 값은 0이 되므로 connection close 처리를 수행한다. 이와 같이 epoll의 감시 대상에서
+                // event를 제외하려면 epoll_ctl 함수에 EpollCtlDel을 지정한다.
+                let fd = event_data as RawFd;
                 let (reader, writer) = fd2buf.get_mut(&fd).unwrap();
 
                 // 1행 읽기
@@ -158,17 +169,29 @@ fn func_181p() {
                 if n == 0 {
                     let mut ev = EpollEvent::new(epoll_in, fd as u64);
                     epoll_ctl(epfd, epoll_del, fd, &mut ev).unwrap();
-                    fd2buf.remove(&fd);
+                    fd2buf.remove(&fd); // connection이 close 상태일 경우 buf에 데이터가 없기 때문에, fd2buf에서 fd를 지워버림
                     println!("closed: fd = {}", fd);
                     continue
                 }
 
                 print!("read: fd = {}, buf = {}", fd, buf);
 
-                // 읽은 데이터를 그대로 쓴다.
+                // n이 0이 아닐 경우 읽은 데이터를 그대로 쓴다.
                 writer.write(buf.as_bytes()).unwrap();
                 writer.flush().unwrap();
             }
         }
     }
 }
+// epoll에서는 감시할 file descriptor를 등록하고, 그 file descriptor에 대해 읽기나 쓰기 등을 할 수 있는 상태가 되면
+// epoll 호출을 반환한다. API는 다소 다르지만 select, poll, kqueue에서도 거의 비슷하게 수행한다.
+// 이렇게 epoll이나 select 등 여러 IO에 대해 동시에 처리를 수행하는 방법을 IO 다중화(I/O multiplexing)라 부른다.
+// IO 다중화를 기술하는 방법론의 하나로 이 코드에서 기술한 것처럼 event에 대해 처리를 기술하는 방법이 있다. 이런 프로그래밍 모델,
+// design pattern을 이벤트 주도(event-driven)라 부르며, event-driven programming 역시 비동기 프로그래밍으로 간주한다.
+//
+// 유명한 event-driven library로는 libevent와 libev가 있다. 이들 라이브러리는 C언어에서 이용할 수 있는 library이며
+// epoll이나 kqueue를 추상화한 것이므로 OS에 의존하지 않고 소프트웨어를 구현할 수 있다.
+// 이들 라이브러리는 file descriptor에 대해 콜백 함수를 등록함으로써 concurrent programming을 구현한다.
+// 그리고 POSIX에서도 AIO(Asynchronous IO)라 불리는 API가 존재한다. POSIX AIO에서는 2종류의 비동기 프로그래밍 방법을
+// 선택할 수 있다. 한 가지는 대상이 되는 file descriptor에 대해 callback 함수를 설정하고 event 발생 시 스레드가 생성되어
+// 그 함수가 실행되는 방법이다. 다른 한 가지는 signal로 알리는 방법이다.
