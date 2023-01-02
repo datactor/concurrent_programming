@@ -12,7 +12,6 @@
     <list default="true" id="74a9b0f8-656d-49d7-b93a-58a2f3b2a3aa" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ch05_async_programming.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ch05_async_programming.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/target/.rustc_info.json" beforeDir="false" afterPath="$PROJECT_DIR$/target/.rustc_info.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -107,7 +106,9 @@
       <workItem from="1672458750359" duration="4596000" />
       <workItem from="1672547858425" duration="271000" />
       <workItem from="1672555229315" duration="5998000" />
-      <workItem from="1672584693614" duration="4319000" />
+      <workItem from="1672584693614" duration="5330000" />
+      <workItem from="1672622218436" duration="16000" />
+      <workItem from="1672645405602" duration="10280000" />
     </task>
     <servers />
   </component>

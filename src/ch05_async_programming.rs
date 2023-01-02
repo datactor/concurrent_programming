@@ -346,7 +346,172 @@ pub fn func_186p() {
 /// 비대칭 코루틴을 이용하면 중단된 함수를 프로그래머 측에서 자유롭게 재개할 수 있으며, 이 중단과 재개를 스케줄링해서 실행할
 /// 수도 있다. 이렇게 하면 정밀도가 높은 제어는 할 수 없지만 프로그래머는 코루틴 관리에서 해방되어 보다 추상도가 높은 동시 계산을
 /// 기술할 수 있다. 이 절에서는 코루틴을 스케줄링해서 실행하는 방법을 알아보자.
+/// 구현에 앞서 선행되어야 할 사전 지식이 있다. 먼저 구현할 역할을 알아보자.
+/// 역할은 크게 Executor, Task, Waker 세가지로 나뉜다.
+///
+///                                wake
+/// Executor <------- 실행 Queue <------- Waker[Task 정보, ...]
+///      \                                      /
+///  poll \                                   /
+///         ↘                               ↙
+///       Task[Future[Future, Future, ...], ...]
+///
+/// - Task가 스케줄링의 대상이 되는 계산의 실행 단위인 '프로세스'에 해당한다.
+/// - Executor는 실행 가능한 Task를 적당한 순서로 실행(Task 안의 Future를 poll)
+/// - Waker는 Task를 스케줄링할 때 이용된다(Task에 대한 정보를 가진 Waker가 필요에 따라 실행 Queue에 Task를 넣음).
+/// 위 그림 및 작동방식은 전형적인 예이며, 다른 실행방법도 가능하다.
+/// 이 장에서는 Waker와 Task를 동일 type으로 구현한다.
 #[test]
-pub fn func_() {
+pub fn func_189p() {
+    use futures::future::{BoxFuture, FutureExt};
+    use futures::task::{waker_ref, ArcWake};
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::mpsc::{sync_channel, Receiver, SyncSender}; // 통신 채널을 위한 함수와 타입. 채널을
+    // 경유하면 스레드 사이에서 데이터 송수신을 수행할 수 있다. Rust에서는 많은 채널 구현에서 송신단과 수신단을 구별하며,
+    // Receiver와 SyncSender type이 수신과 송신용 endpoint의 type이 된다. mpsc는 말 그대로 송신은 여러 스레드에서.
+    // 수신은 단일 스레드에서만 가능한 채널이다.
+    use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll};
 
+    // 간략화를 위해 Task 자체를 Waker로 구현
+    struct Task {
+        // 실행하는 코루틴
+        future: Mutex<BoxFuture<'static, ()>>, // 실행할 코루틴(Future). Future의 실행을 완료할 때까지
+                                               // Executor가 실행을 수행한다.
+        // Executor에 스케줄링하기 위한 채널
+        sender: SyncSender<Arc<Task>>, // Executor로 Task를 전달하고 스케줄링을 수행하기 위한 채널
+    }
+
+    impl ArcWake for Task {
+        fn wake_by_ref(arc_self: &Arc<Self>) { // 자신의 Arc 참조를 Executor로 송신하고 스케줄링한다.
+            // 자신을 스케줄링
+            let self0 = arc_self.clone();
+            arc_self.sender.send(self0).unwrap();
+        }
+    }
+    // 이렇게 Task는 실행할 코루틴을 저장하고 자신을 스케줄링 가능하도록 ArcWake trait을 실행한다. 스케줄링은
+    // 단순히 Task로의 Arc 참조를 채널로 송신(실행 Queue에 넣음)한다.
+
+    // Task의 실행을 수행하는 Executor를 구현해보자. 여기서 구현한 Executor는 단일 채널에서 실행 가능한 Task를 받아
+    // Task 안의 Future를 poll하는 단순한 것이다.
+    struct Executor { // Executor type은 단순히 Task를 송수신하는 채널(실행 Queue)의 endpoint를 저장한다.
+        // 실행 Queue
+        sender: SyncSender<Arc<Task>>,
+        receiver: Receiver<Arc<Task>>,
+    }
+
+    impl Executor {
+        fn new() -> Self {
+            // 채널 생성. Queue의 사이즈는 최대 1024
+            let (sender, receiver) = sync_channel(1024);
+            Executor {
+                sender: sender.clone(), // mp 다중 송신. 참조 증가
+                receiver, // sc 단일 수신
+            }
+        }
+
+        // 새롭게 Task를 생성하고 실행 Queue에 넣기위한 객체를 반환함. spawn 함수에 해당하는 작동을 수행하기 위한 객체.
+        fn get_spawner(&self) -> Spawner {
+            Spawner {
+                sender: self.sender.clone(), // 참조 증가.
+            }
+        }
+
+        fn run(&self) { // 채널에서 Task를 수신해서 순서대로 실행한다. 이번 구현에서는 Task와 Waker가 같으므로
+                        // Task에서 Waker를 생성하고 Waker에서 Context를 생성한 뒤 context를 인수로 poll() 호출
+            while let Ok(task) = self.receiver.recv() {
+                // context 생성
+                let mut future = task.future.lock().unwrap();
+                let waker = waker_ref(&task); // 수신한 task(future)로 waker_ref를 만듬
+                let mut ctx = Context::from_waker(&waker); // waker_ref로부터 context를 만듬
+                // poll을 호출해서 실행
+                let _ = future.as_mut().poll(&mut ctx);
+            }
+        }
+    }
+    // context는 실행 상태를 저장하는 객체이며 Future 실행 시 이를 전달해야 한다.
+    // Rust의 context는 내부에 Waker 및 _marker(lifetime을 명시해 수명을 불변으로 강제하여 분산 변경에 대한
+    // future를 보장함 (phantomdata))를 가지고 있다. 이번 구현에서는 Waker와 Task가 같으므로 context에서 Waker를
+    // 꺼낼 때 Task가 꺼내진다.
+
+    // 다음 코드는 Task를 생성하는 Spawner type의 정의와 구현이다. Spawner는 Future를 받아 Task로 감사서
+    // 실행 Queue에 넣기 위한(channel로 송신) type이다.
+    struct Spawner { // 단순히 실행 Queue에 추가하기 위해 channel의 송수신 endpoint를 저장할 뿐이다.
+        sender: SyncSender<Arc<Task>>,
+    }
+
+    impl Spawner {
+        // Task를 생성해서 실행 Queue에 추가한다. 이 함수는 Future를 받아 Box화해서 Task에 감싸서 실행 Queue에 넣는다.
+        fn spawn(&self, future: impl Future<Output = ()> + 'static + Send) {
+            let future = future.boxed();  // Future를 Box화
+            let task = Arc::new(Task {  // Task 생성
+                future: Mutex::new(future),
+                sender: self.sender.clone(),
+            });
+
+            // 실행 Queue에 인큐
+            self.sender.send(task).unwrap();
+        }
+    }
+
+    struct Hello { // 함수의 상태와 변수를 저장하는 Hello type 정의.
+        state: StateHello, // Hello, World!에는 변수가 없으므로 함수의 실행 위치 상태만 필드로 가진다.
+    }
+
+    // 함수의 실행 상태를 나타내는 StateHello type.
+    enum StateHello {
+        HELLO, // 초기 상태는 Hello 상태고
+        WORLD, // Python version의 첫 번째 yield를 나타내는 상태가 WORLD 상태
+        END,   // 두 번째 yield를 나타내는 상태가 END 상태가 된다.
+    }
+
+    impl Hello {
+        fn new() -> Self {
+            Hello {
+                state: StateHello::HELLO, // 초기 상태
+            }
+        }
+    }
+
+    impl Future for Hello {
+        type Output = ();
+
+        // poll 함수가 실제 함수 호출(Python에서 h = hello()). 인수의 Pin type은 Box등과 같은 type(https://rust-lang.github.io/async-book/04_pinning/01_chapter.html)
+        // Pin type은 내부적인 메모리 복사로의 move를 할 수 없어서 주소 변경을 할 수 없는 type이지만 이것은 Rust 특유의 성질에 속한다.(unpinn을 구현해야함)
+        // _cx는 Waker 및 future의 내부구조부터 파악하고 뜯어 보길 바란다.
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+            match (*self).state {
+                StateHello::HELLO => {
+                    print!("Hello, ");
+                    // WORLD 상태로 전이
+                    (*self).state = StateHello::WORLD;
+                    // 추가
+                    cx.waker().wake_by_ref(); // 자신을 실행 Queue에 넣음
+                    return Poll::Pending // 다시 호출 가능
+                }
+                StateHello::WORLD => {
+                    println!("World!");
+                    // END 상태로 전이
+                    (*self).state = StateHello::END;
+                    // 추가
+                    cx.waker().wake_by_ref(); // 자신을 실행 Queue에 넣음
+                    return Poll::Pending // 다시 호출 가능
+                }
+                StateHello::END => {
+                    return Poll::Ready(()) // 종료
+                }
+            }
+        }
+    }
+    // 이 구현에서 알 수 있듯이 poll 함수에서는 함수의 상태에 따라 필요한 코드를 실행하고 내부적으로 상태 전이를 수행한다.
+    // 함수가 재실행 가능한 경우 poll 함수는 Poll::Pending을 반환하고, 모두 종료한 경우 Poll::Ready에 반환값을 감싸서 반환한다.
+
+    // 실행
+    let executor = Executor::new();
+    executor.get_spawner().spawn(Hello::new());
+    executor.run();
 }
+// 이처럼 Executor의 생성과 spawn에서의 Task 생성을 수행한 뒤 run 함수를 호출함으로써 hello의 코루틴이 마지막까지
+// 자동 실행된다. 스케줄링 실행을 수행하면 프로그래머가 코루틴 호출을 고려할 필요가 없으며, 자동으로 코루틴을 실행할
+// 수 있게 된다.
