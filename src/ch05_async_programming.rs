@@ -386,7 +386,7 @@ pub fn func_189p() {
     impl ArcWake for Task {
         fn wake_by_ref(arc_self: &Arc<Self>) { // 자신의 Arc 참조를 Executor로 송신하고 스케줄링한다.
             // 자신을 스케줄링
-            let self0 = arc_self.clone();
+            let self0 = arc_self.clone(); // 송신은 여러 스레드에서 할 것이기 때문에 참조 카운트 업
             arc_self.sender.send(self0).unwrap();
         }
     }
@@ -455,6 +455,8 @@ pub fn func_189p() {
         }
     }
 
+
+    // 실행을 위한 구조체, impl block
     struct Hello { // 함수의 상태와 변수를 저장하는 Hello type 정의.
         state: StateHello, // Hello, World!에는 변수가 없으므로 함수의 실행 위치 상태만 필드로 가진다.
     }
@@ -508,10 +510,306 @@ pub fn func_189p() {
     // 함수가 재실행 가능한 경우 poll 함수는 Poll::Pending을 반환하고, 모두 종료한 경우 Poll::Ready에 반환값을 감싸서 반환한다.
 
     // 실행
+    // let executor = Executor::new();
+    // executor.get_spawner().spawn(Hello::new());
+    // executor.run();
+
     let executor = Executor::new();
-    executor.get_spawner().spawn(Hello::new());
+    // async로 Future trait을 구현한 type의 값으로 변환
+    executor.get_spawner().spawn(async {
+        let h = Hello::new();
+        h.await; // poll을 호출해서 실행
+    });
     executor.run();
+    // async로 둘러싸인 처리 부분이 Rust 컴파일러에 의해 Future trait을 구현한 type의 값으로 변환되어 await으로
+    // Future trait의 poll 함수를 호출한다. (async block은 impl Future<Output =()>를 반환하는 함수로 바뀜)
+    // 즉, async { code }라고 기술하는 경우 Future trait을 구현한 type이 컴파일러에 의해 새롭게 정의되어
+    // async { code } 부분에는 해당 type의 new 함수에 해당하는 호출이 이뤄진다.
+    // 그리고 그 type이 poll 함수에는 async code 부분이 구현되어 있다.
+    //
+    // h.await의 의미는 다음과 같은 생략 type이라 보면 된다.
+    // match h.poll(cx) {
+    //     Poll::Pending => return Poll::Pending,
+    //     Poll::Result(x) => x,
+    // }
+    // 이렇게 함으로써 async, 즉 Future trait의 poll 함수가 중첩해서 호출되는 경우에도 함수의 중단과 값 반환을 적절하게
+    // 다룰 수 있다. 즉, poll 함수 호출로 Pending이 반환되는 경우에는 Executor까지 Pending임이 소급되어 전달된다.
 }
 // 이처럼 Executor의 생성과 spawn에서의 Task 생성을 수행한 뒤 run 함수를 호출함으로써 hello의 코루틴이 마지막까지
 // 자동 실행된다. 스케줄링 실행을 수행하면 프로그래머가 코루틴 호출을 고려할 필요가 없으며, 자동으로 코루틴을 실행할
 // 수 있게 된다.
+
+/// 5.3 async/await
+///
+/// https://rust-lang.github.io/async-book/01_getting_started/02_why_async.html
+///
+/// 5.3.1 Future와 async/await
+/// Future는 미래의 언젠가의 시점에서 값이 결정되는(또는 일정한 처리가 종료되는) 것을 나타내는 type으로 lang에 따라
+/// promise 또는 eventual이라고 부르기도 한다. Future나 Promise라는 용어가 등장한 것은 1977년경이며, Future는
+/// 1985년 MultiLisp 언어에 내장되었고, Promise는 1988년에 언어에 의존하지 않는 기술 방식으로 제안되었다.
+/// 사실 지금까지 사용했던 Future trait은 미래 언젠가의 시점에서 값이 결정되는 것을 나타내기 위한 interface를 규정한
+/// trait이다. 일반적으로 Future는 coroutine을 이용해 구현되며 이로 인해
+/// '중단, 재개 가능한 함수'에서 '미래에 결정되는 값을 표현한 것'으로 의미 전환이 이뤄진다.
+/// Future type을 이용한 기술 방법에는 명시적으로 기술하는 방법과 암묵적으로 기술하는 방법이 있다.
+/// 암묵적으로 기술하는 경우 Future type은 일반적인 type과 완전히 동일하게 기술되지만
+/// 명시적으로 기술할 때는 Future type에 대한 조작은 프로그래머가 기술해야 한다.
+/// async/await은 명시적인 Future type에 대한 기술이라고 생각하면 된다.
+/// await은 Future type의 값이 결정될 때까지 처리를 정지하고 다른 함수에 CPU 리소스를 양보하기 위해 이용하고,
+/// async는 Future type을 포함한 처리를 기술하기 위해 사용한다.
+/// NOTE_ 명시적 또는 암묵적으로 기술한다는 것은 참조를 생각해보면 이해하기 쉽다. 예를 들어 &u32 type의 변수 a의 값을
+///       참조하기 위해 Rust에서는 *a라고 명시적으로 참조제외를 해야 하지만 a라고 쓰기만 해도 컴파일러가 자동적으로
+///       참조 제외를 수행하는 언어 설계도 생각할 수 있다(e.g. Deref Coercion).
+/// 예를 들어 앞의 Future trait을 이용한 Hello, World!는 async/await을 이용해 다음과 같이 쓸 수 있다
+/// (func_189p의 실행부를 수정해보기)
+fn func_194p() {
+    // let executor = Executor::new();
+    // // async로 Future trait을 구현한 type의 값으로 변환
+    // executor.get_spawner().spawn(async {
+    //     let h = Hello::new();
+    //     h.await; // poll을 호출해서 실행
+    // });
+    // executor.run();
+}
+// async로 둘러싸인 처리 부분이 Rust 컴파일러에 의해 Future trait을 구현한 type의 값으로 변환되어 await으로
+// Future trait의 poll 함수를 호출한다. (async block은 impl Future<Output =()>를 반환하는 함수로 바뀜)
+// 즉, async { code }라고 기술하는 경우 Future trait을 구현한 type이 컴파일러에 의해 새롭게 정의되어
+// async { code } 부분에는 해당 type의 new 함수에 해당하는 호출이 이뤄진다.
+// 그리고 그 type이 poll 함수에는 async code 부분이 구현되어 있다.
+//
+// h.await의 의미는 다음과 같은 생략 type이라 보면 된다.
+// match h.poll(cx) {
+//     Poll::Pending => return Poll::Pending,
+//     Poll::Result(x) => x,
+// }
+//
+// 이렇게 함으로써 async, 즉 Future trait의 poll 함수가 중첩해서 호출되는 경우에도 함수의 중단과 값 반환을 적절하게
+// 다룰 수 있다. 즉, poll 함수 호출로 Pending이 반환되는 경우에는 Executor까지 Pending임이 소급되어 전달된다.
+//
+// 비동기 프로그래밍은 콜백을 이용해서도 기술된다. 하지만 콜백을 이용하는 방법은 가독성이 낮아진다. 특히 콜백을 연속해서
+// 호출하면 매우 읽기 어려운 코드가 되어 콜백 지옥이라 불리기도 한다. 다음 코드는 콜백 지옥의 예다. 여기서 poll 함수는
+// 콜백 함수를 받아 값이 결정되었을 때 해당 콜백 함수에 결과를 전달해서 호출한다고 가정한다.
+// x.poll(|a| {
+//     y.poll(|b| {
+//         z.poll(|c| {
+//             a + b + c
+//         })
+//     })
+// })
+// 이처럼 콜백 기반의 비동기 처리 코드는 가독성이 낮다. 한편 async/await을 사용하면 이 코드는
+// x.await + y.await + z.await
+// 과 같이 기존의 동기 프로그래밍과 완전히 동일하게 기술할 수 있다.
+
+/// 5.3.2 IO 다중화와 async/await
+/// 이 절에서는 epoll을 이용한 비동기 IO와 async/await을 조합하는 방법을 설명한다. 다음 그림은 이 절에서 구현할
+/// 컴포넌트의 관계를 나타낸 것이다.
+///                                       ┌---IO Selector------┐
+///                                       |      [epoll]       |
+///                                 wake  |         ↑          |
+///  Executor <----- [실행 Queue] <--------┼---[Task 정보, ...] |
+///      |                                |         ↑         |
+/// poll |                                └---------┼---------┘
+///      |           [IO Queue]---------------------┘
+///      ↓               ↑
+/// Task/Waker[Future[Future, Future, ...], ...]
+///
+/// 그림 5-3 IO 다중화와 async/await
+///
+/// Task type, Executor type, Spawner type은 189p의 scheduling에서 했던 구현을 사용한다. 여기서는 이들 type에
+/// 더해 IO 다중화를 수행하기 위한 IO Selector type을 구현한다. IO Selector는 Task 정보를 받아 epoll을 이용해
+/// 감시를 수행하고 event가 발생하면 wake 함수를 호출해 실행 queue에 Task를 등록한다. 따라서 Future의 코드 안에서
+/// 비동기 IO를 수행할 때는 IO Selector로 감시 대상 파일 descriptor 및 Waker를 등록해야 한다.
+/// 다음 코드는 기본적으로는 epoll, TCP/IP, async/await을 이용하기 위해 필요한 것들을 조합한 것이다.
+#[test]
+pub fn func_197() {
+    use futures::{
+        future::{BoxFuture, FutureExt},
+        task::{waker_ref, ArcWake},
+    };
+    use nix::{
+        errno::Errno,
+        sys::{
+            epoll::{
+                epoll_create1, epoll_ctl, epoll_wait,
+                EpollCreateFlags, EpollEvent, EpollFlags, EpollOp,
+            },
+            eventfd::{eventfd, EfdFlags}, // eventfd용 import. eventfd? 리눅스 고유의 이벤트 알림용 인터페이스.
+            // eventfd에서는 커널 안에 8bytes의 정수값을 저장하며 그 값이 0보다 큰 경우 읽기 event가 발생함. 값에 대한
+            // 읽기 쓰기는 read와 write 시스템 콜로 수행할 수 있다. 이번 구현에서는 IO Selector에 대한 알림에
+            // 이 eventfd를 이용해 보자.
+        },
+        unistd::write,
+    };
+    use std::{
+        collections::{HashMap, VecDeque},
+        future::Future,
+        io::{BufRead, BufReader, BufWriter, Write},
+        net::{SocketAddr, TcpListener, TcpStream},
+        os::unix::io::{AsRawFd, RawFd},
+        pin::Pin,
+        sync::{
+            mpsc::{sync_channel, Receiver, SyncSender},
+            Arc, Mutex,
+        },
+        task::{Context, Poll, Waker},
+    };
+
+    fn write_eventfd(fd: RawFd, n: usize) {
+        // usize를 *const u8로 변환
+        let ptr = &n as *const usize as *const u8;
+        let val = unsafe {
+            std::slice::from_raw_parts(
+                ptr, std::mem::size_of_val(&n))
+        };
+        // write 시스템 콜 호출
+        write(fd, &val).unwrap();
+    }
+    // 이번 구현에서는 이 함수를 이용해 eventfd에 1을 입력함으로써 IO Selector에 알리고,
+    // IOSelector는 읽기 후에 0을 입력함으로써 event 알림을 해제한다.
+
+    // Implementating IOSelector type
+    // 먼저 IOOps와 IOSelector type을 정의해보자
+    enum IOOps {
+        ADD(EpollFlags, RawFd, Waker), // epoll에 추가
+        REMOVE(RawFd),                 // epoll에서 삭제
+    }
+
+    struct IOSelector {
+        wakers: Mutex<HashMAp<RawFd, Waker>>, // fd에서 waker
+        queue: Mutex<VecDeque<IOOps>>,        // IO Queue: 그림 5-3의 IO Queue의 변수
+        epfd: RawFd,  // epoll의 fd
+        event: RawFd, // eventfd의 fd
+    }
+    // IOOps type은 IOSelector에 Task와 파일 descriptor의 등록과 삭제를 수행하는 조작을 정의한 type이다.
+    // epoll의 감시대상으로 추가할 때는 ADD에 Flag, file descriptor(RawFd), Waker를 감싸서 IO Queue에 넣고,
+    // 삭제할 때는 file descriptor(RawFd)를 REMOVE에 감싸서 Queue에 넣는다.
+    // IO 다중화를 수행하기 위해서는 file descriptor에 event가 발생했을 때 이에 대응하는 Waker를 호출해야 하기 때문에
+    // file descriptor에서 Waker로의 맵을 저장해야 한다. IOSelector type은 그것을 수행하기 위한 정보를 저장하는
+    // type이 된다. Queue 변수가 [그림 5-3]의 IO Queue가 된다. 이 변수는 LinkedList가 아니라 VecDeque type으로
+    // 정의했는데 이는 계산량을 줄이기 위해서다. LinkedList type에서는 추가와 삭제를 할 때마다 메모리 확보와 해제를
+    // 수행하지만 VecDeque type은 내부적인 데이터 구조는 Vector List로 되어 있기 때문에 메모리 확보와 해제를 수행하는
+    // 횟수가 적어진다. 따라서 stack이나 queue로 이용한다면 VecDeque를 사용하는 편이 효율이 좋다. 단, LinkedList
+    // type과 같이 임의 위치로의 요소 추가 등은 할 수 없다는 제한이 있다.
+
+    // Implemetating IOSelector type
+    impl IOSelector {
+        fn new() -> Arc<Self> { // 1
+            let s = IOSelector {
+                wakers: Mutex::new(HashMap::new()),
+                queue: Mutex::new(VecDeque::new()),
+                epfd: epoll_create1(EpollCreateFlags::empty()).unwrap(),
+                // eventfd 생성
+                event: eventfd(0, EfdFlags::empty()).unwrap(),
+            };
+            let result = Arc::new(s); // result에 Arc로 감싼 s(IOSelector)를 할당하고
+            let s = result.clone(); // s에 result의 clone(참조)을 붙임 기존의 s는 없어짐
+                                                  // 모두 Arc로 감싸져 있음
+            // epoll용 스레드 생성. IOSelector에서는 별도 스레드에서 epoll에 의한 event 관리를 수행하기 위해
+            // epoll용 스레드를 생성하고 select 함수를 호출
+            std::thread::spawn(move || s.select());
+
+            result
+        }
+
+        // epoll로 감시하기 위한 함수. file descriptor의 epoll로의 추가와 Waker에 대한 대응을 수행한다.
+        fn add_event(
+            &self,
+            flag: EpollFlags, // epoll flag
+            fd: RawFd, // 감시 대상 file descriptor
+            waker: Waker,
+            wakers: &mut HashMap<RawFd, Waker>,
+        ) {
+            // 각 정의의 숏컷
+            let epoll_add = EpollOp::EpollCtlAdd;
+            let epoll_mod = EpollOp::EpollCtlMod;
+            let epoll_one = EpollFlags::EPOLLONESHOT;
+
+            // EPOLLONESHOT을 지정하여 일단 event가 발생하면
+            // 그 fd로의 event는 재설정하기 전까지 알림이 발생하지 않게 한다(oneshot. epoll로의 연관성이 삭제되는 것은 아님)
+            let mut ev = EpollEvent::new(flag | epoll_one, fd as u64);
+
+            // 감시 대상에 추가
+            if let Err(err) = epoll_ctl(self.epfd, epoll_add, fd, &mut ev) {
+                match err {
+                    nix::Error::Sys(Errno::EEXIST) => {
+                        // 이미 추가되어 있는 경우에 재설정. epoll_ctl을 호출해서 지정된 file descriptor를
+                        // 감시 대상으로 추가한다. 이미 추가되어 있는 경우에는 EpollCtlMod를 지정해 재설정한다.
+                        // 이것은 EPOLLONESHOT으로 비활성화된 event를 설정하기 위해 필요하다. 보다 효율적인 구현을
+                        // 하기 위해서는 이미 epoll에 추가했는지 기록해두고 시스템 콜 호출 횟수를 줄여야 하지만
+                        // EPOLLONESHOT의 이해를 위해 이렇게 구현했음.
+                        epoll_ctl(self.epfd, epoll_mod, fd, &mut ev).unwrap();
+                    }
+                    _ => {
+                        panic!("epoll_ctl: {}", err);
+                    }
+                }
+            }
+
+            assert!(!wakers.contains_key(&fd));
+            wakers.insert(fd, waker); // file descriptor와 Waker를 k, v쌍으로 wakers에 넣음
+        }
+
+        // epoll의 감시에서 삭제하기 위한 함수. 지정한 파일 디스크럽터를 epoll의 감시 대상에서 삭제한다. 여기서는
+        // 단순히 epoll_ctl 함수에 EpollCtlDel을 지정해 감시 대상에서 제외하고 file descriptor와 Waker의 관련성도
+        // 삭제할 뿐이다.
+        fn rm_event(&self, fd: RawFd, wakers: &mut HashMap<RawFd, Waker>) {
+            let epoll_del = EpollOp::EpollCtlDel;
+            let mut ev = EpollEvent::new(EpollFlags::empty(), fd as u64);
+            epoll_ctl(self.epfd, epoll_del, fd, &mut ev).ok();
+            wakers.remove(&fd);
+        }
+
+        fn select(&self) { // 전용 스레드로 file descriptor의 감시를 수행하기 위한 함수
+            // 각 정의의 숏컷
+            let epoll_in = EpollFlags::EPOLLIN;
+            let epoll_add = EpollOp::EpollCtlAdd;
+
+            // eventfd를 epoll의 감시 대상에 추가.
+            let mut ev = EpollEvent::new(epoll_in, self.event as u64);
+            epoll_ctl(Self.epfd, epoll_add, self.event, &mut ev).unwrap();
+
+            let mut events = vec![EpollEvent::empty(); 1024];
+            //event 발생 감시
+            while let Ok(nfds) = epoll_wait(self.epfd, // 위에서 eventfd를 감시 대상에 추가하고 이벤트 발생 감시
+                                            &mut events, -1) {
+                let mut t = self.wakers.lock().unwrap();
+                for n in 0..nfds {
+                    if events[n].data() == self.event as u64 {
+                        // eventfd의 경우 file descriptor와 Waker를 등록 및 삭제 요구 처리
+                        let mut q = self.queue.lock().unwrap();
+                        while let Some(op) = q.pop_front() {
+                            match op {
+                                // 추가
+                                IOOps::ADD(flag, fd, waker) =>
+                                    self.add_event(flag, fd, waker, &mut t),
+                                IOOps::REMOVE(fd) => self.rm_event(fd, &mut t),
+                            }
+                        }
+                    } else {
+                        // 생성한 event가 file descriptor인 경우에는 Waker의 wake_by_ref를 호출해 실행 큐에 추가
+                        let data = events[n].data() as i32;
+                        let waker = t.remove(&data).unwrap();
+                        waker.wake_by_ref();
+                    }
+                }
+            }
+        }
+
+        // file descriptor 등록용 함수. file descriptor와 Waker를 IOSelector에 등록한다. 이것은 Future가
+        // IO Queue에 요청을 넣기 위해 이용됨.
+        fn register(&self, flags: EpollFlags, fd: RawFd, waker: Waker) {
+            let mut q = self.queue.lock().unwrap();
+            q.push_back(IOOps::ADD(flags, fd, waker));
+            write_eventfd(self.event, 1);
+        }
+
+        // file descriptor 삭제용 함수. file descriptor와 Waker의 연관성을 삭제함.
+        fn unregister(&self, fd: RawFd) {
+            let mut q = self.queue.lock().unwrap();
+            q.push_back(IOOps::REMOVE(fd));
+            write_eventfd(self.event, 1);
+        }
+    }
+    // 이렇게 IOSelctor type은 file descriptor와 Waker를 연관짓는다. IOSelector로의 요청은 queue 변수에
+    // 요청을 넣고 eventfd에 알린다. channel이 아닌 eventfd에서 수행하는 이유는 IOSelector는 epoll을 이용한
+    // file descriptor 감시도 수행해야 하기 때문이다.
+}
