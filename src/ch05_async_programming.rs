@@ -971,4 +971,247 @@ pub fn func_197() {
         }
     }
     // 여기까지가 connection을 받아들이고 데이터를 읽는 Future의 구현이다. 이들을 사용하면 동시서버를 보다 추상적으로 기술할 수 있다다.
+
+    // async/await을 이용한 동시 echo server 구현
+    let executor = Executor::new();
+    let selector = IOSelector::new();
+    let spawner = executor.get_spawner();
+
+    let server = async move { // 비동기 프로그래밍, 컴파일러에 의해 Future trait을 구현한 객체 생성됨.
+        //  비동기 accept listener 생성. echo server용 TCP listen socket을 생성하고 로컬호스트의 10000번 포트 listen.
+        let listener = AsyncListener::listen("127.0.0.1:10000", selector.clone());
+
+        loop {
+            // async connection accept(connection을 비동기로 받아들임)
+            let (mut reader, mut writer, addr) = listener.accept().await;
+            // 예를 들면 h.await의 의미는 다음과 같은 생략 type이라 보면 된다.
+            // match h.poll(cx) {
+            //     Poll::Pending => return Poll::Pending,
+            //     Poll::Result(x) => x,
+            // }
+            println!("accept: {}", addr);
+
+            // connection 별로 Task 생성하고 비동기 실행.
+            spawner.spawn(async move {
+                // connection별 처리. 1행씩 비동기 읽어서 응답
+                while let Some(buf) = reader.read_line().await {
+                    print!("read: {}, {}", addr, buf);
+                    writer.write(buf.as_bytes()).unwrap();
+                    writer.flush().unwrap();
+                }
+                println!("close: {}", addr);
+            });
+        }
+    };
+
+    // Task를 생성하고 실행
+    executor.get_spawner().spawn(server);
+    executor.run();
+    // 이와 같이 async/await을 이용하면 epoll같은 원시적 조작은 감춰지고, connection별 비동기 처리는 동기 프로그래밍과
+    // 완전히 동일하게 기술할 수 있다. 이렇게 하면 가독성과 유지보수성이 높아진다.
+    // Rust에서는 runtime에 coroutine이나 경량 스레드 등의 기능을 지원하지 않아 구현이 다소 번잡했지만 바텀으로 들어가볼
+    // 수 있는 계기가 되었으면 한다. 경량 스레드를 지원하는 Hasekll에서는 MVar라 불리는 channel(또는 STM)과 경량 스레드를
+    // 이용해 async/await과 완전히 동일한 기능을 단 몇 줄의 코드로 구현할 수 있다. 이것은 추상도가 높은 기능을 제공하는
+    // 프로그래밍 언어를 사용했을 때 얻을 수 있는 이점이다.
+    // 한편 Rust에서는 경량 스레드 같은 high-level 언어 기능에 의존하지 않고 async/await을 구현하고 있으므로
+    // OS나 내장 소프트웨어 등에 쉽게 적용할 수 있다. 즉, 내장 소프트웨어, OS, 장치 드라이버 등 하드웨어에 가까운 소프트웨어를
+    // async/await을 이용해 구현할 수 있다!!
+
+
+
+
+    // 여기는 위에서 구현했던 비동기 서버 구현을 위한 struct, impl block들. async server에 재활용하기 위해 구현.
+    struct Task {
+        // 실행하는 코루틴
+        future: Mutex<BoxFuture<'static, ()>>, // 실행할 코루틴(Future). Future의 실행을 완료할 때까지
+        // Executor가 실행을 수행한다.
+        // Executor에 스케줄링하기 위한 채널
+        sender: SyncSender<Arc<Task>>, // Executor로 Task를 전달하고 스케줄링을 수행하기 위한 채널
+    }
+
+    impl ArcWake for Task {
+        fn wake_by_ref(arc_self: &Arc<Self>) { // 자신의 Arc 참조를 Executor로 송신하고 스케줄링한다.
+            // 자신을 스케줄링
+            let self0 = arc_self.clone(); // 송신은 여러 스레드에서 할 것이기 때문에 참조 카운트 업
+            arc_self.sender.send(self0).unwrap();
+        }
+    }
+    // 이렇게 Task는 실행할 코루틴을 저장하고 자신을 스케줄링 가능하도록 ArcWake trait을 실행한다. 스케줄링은
+    // 단순히 Task로의 Arc 참조를 채널로 송신(실행 Queue에 넣음)한다.
+
+    // Task의 실행을 수행하는 Executor를 구현해보자. 여기서 구현한 Executor는 단일 채널에서 실행 가능한 Task를 받아
+    // Task 안의 Future를 poll하는 단순한 것이다.
+    struct Executor { // Executor type은 단순히 Task를 송수신하는 채널(실행 Queue)의 endpoint를 저장한다.
+    // 실행 Queue
+    sender: SyncSender<Arc<Task>>,
+        receiver: Receiver<Arc<Task>>,
+    }
+
+    impl Executor {
+        fn new() -> Self {
+            // 채널 생성. Queue의 사이즈는 최대 1024
+            let (sender, receiver) = sync_channel(1024);
+            Executor {
+                sender: sender.clone(), // mp 다중 송신. 참조 증가
+                receiver, // sc 단일 수신
+            }
+        }
+
+        // 새롭게 Task를 생성하고 실행 Queue에 넣기위한 객체를 반환함. spawn 함수에 해당하는 작동을 수행하기 위한 객체.
+        fn get_spawner(&self) -> Spawner {
+            Spawner {
+                sender: self.sender.clone(), // 참조 증가.
+            }
+        }
+
+        fn run(&self) { // 채널에서 Task를 수신해서 순서대로 실행한다. 이번 구현에서는 Task와 Waker가 같으므로
+            // Task에서 Waker를 생성하고 Waker에서 Context를 생성한 뒤 context를 인수로 poll() 호출
+            while let Ok(task) = self.receiver.recv() {
+                // context 생성
+                let mut future = task.future.lock().unwrap();
+                let waker = waker_ref(&task); // 수신한 task(future)로 waker_ref를 만듬
+                let mut ctx = Context::from_waker(&waker); // waker_ref로부터 context를 만듬
+                // poll을 호출해서 실행
+                let _ = future.as_mut().poll(&mut ctx);
+            }
+        }
+    }
+    // context는 실행 상태를 저장하는 객체이며 Future 실행 시 이를 전달해야 한다.
+    // Rust의 context는 내부에 Waker 및 _marker(lifetime을 명시해 수명을 불변으로 강제하여 분산 변경에 대한
+    // future를 보장함 (phantomdata))를 가지고 있다. 이번 구현에서는 Waker와 Task가 같으므로 context에서 Waker를
+    // 꺼낼 때 Task가 꺼내진다.
+
+    // 다음 코드는 Task를 생성하는 Spawner type의 정의와 구현이다. Spawner는 Future를 받아 Task로 감사서
+    // 실행 Queue에 넣기 위한(channel로 송신) type이다.
+    struct Spawner { // 단순히 실행 Queue에 추가하기 위해 channel의 송수신 endpoint를 저장할 뿐이다.
+    sender: SyncSender<Arc<Task>>,
+    }
+
+    impl Spawner {
+        // Task를 생성해서 실행 Queue에 추가한다. 이 함수는 Future를 받아 Box화해서 Task에 감싸서 실행 Queue에 넣는다.
+        fn spawn(&self, future: impl Future<Output = ()> + 'static + Send) {
+            let future = future.boxed();  // Future를 Box화
+            let task = Arc::new(Task {  // Task 생성
+                future: Mutex::new(future),
+                sender: self.sender.clone(),
+            });
+
+            // 실행 Queue에 인큐
+            self.sender.send(task).unwrap();
+        }
+    }
+
+
+    // 실행을 위한 구조체, impl block
+    struct Hello { // 함수의 상태와 변수를 저장하는 Hello type 정의.
+    state: StateHello, // Hello, World!에는 변수가 없으므로 함수의 실행 위치 상태만 필드로 가진다.
+    }
+
+    // 함수의 실행 상태를 나타내는 StateHello type.
+    enum StateHello {
+        HELLO, // 초기 상태는 Hello 상태고
+        WORLD, // Python version의 첫 번째 yield를 나타내는 상태가 WORLD 상태
+        END,   // 두 번째 yield를 나타내는 상태가 END 상태가 된다.
+    }
+
+    impl Hello {
+        fn new() -> Self {
+            Hello {
+                state: StateHello::HELLO, // 초기 상태
+            }
+        }
+    }
+
+    impl Future for Hello {
+        type Output = ();
+
+        // poll 함수가 실제 함수 호출(Python에서 h = hello()). 인수의 Pin type은 Box등과 같은 type(https://rust-lang.github.io/async-book/04_pinning/01_chapter.html)
+        // Pin type은 내부적인 메모리 복사로의 move를 할 수 없어서 주소 변경을 할 수 없는 type이지만 이것은 Rust 특유의 성질에 속한다.(unpinn을 구현해야함)
+        // _cx는 Waker 및 future의 내부구조부터 파악하고 뜯어 보길 바란다.
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+            match (*self).state {
+                StateHello::HELLO => {
+                    print!("Hello, ");
+                    // WORLD 상태로 전이
+                    (*self).state = StateHello::WORLD;
+                    // 추가
+                    cx.waker().wake_by_ref(); // 자신을 실행 Queue에 넣음
+                    return Poll::Pending // 다시 호출 가능
+                }
+                StateHello::WORLD => {
+                    println!("World!");
+                    // END 상태로 전이
+                    (*self).state = StateHello::END;
+                    // 추가
+                    cx.waker().wake_by_ref(); // 자신을 실행 Queue에 넣음
+                    return Poll::Pending // 다시 호출 가능
+                }
+                StateHello::END => {
+                    return Poll::Ready(()) // 종료
+                }
+            }
+        }
+    }
+}
+
+/// 5.4 async library
+/// Rust의 async/await을 이용한 비동기 라이브러리의 실질적 표준인 Tokio를 이용한 비동기를 알아보자. Rust에서 비동기 라이브러리는
+/// 외부 crate를 사용한다. Tokio 이외의 비동기 라이브러리로 async-std, smol, glommio 등이 있다.
+/// async-std는 Rust의 std에 준거한 비동기 API 제공을 목적으로 한다.
+/// smol은 라이브러리의 compact화와 컴파일 시간 단축을 목적으로 한다.
+/// glommio는 파일이나 네트워크 IO 등을 위한 비동기 라이브러리이며, 뒤에는 io_uring이라는 리눅스 커널 5.1에서 도입한 고속 API를 이용한다.
+///
+/// Tokio dependencies(cargo.toml 참조)
+///
+/// Tokio에서는 이용할 기능을 features로 세세하게 지정할 수 있지만 여기서는 full을 지정했다. full을 지정하면 모든
+/// 기능을 사용할 수 있지만 그만큼 컴파일 시간이나 실행 바이너리 크기가 늘어날 가능성이 있다.
+///
+/// 다음은 Tokio를 이용한 echo server 구현 예.
+#[test]
+fn func_210p() {
+    use tokio::{
+        io::{self, AsyncBufReadExt, AsyncWriteExt}, // async용 buffer 읽기 쓰기용 trait
+        net::TcpListener, // async용 TCP listener
+    };
+
+    #[tokio::main] // async용 main 함수에는 #[tokio::main] 필수
+    async fn main() -> io::Result<()> {
+        // 10000번 포트에서 TCP listen. async TCP listen 개시. 일반적인 TcpListener와 거의 동일하게 기술 가능.
+        let listener = TcpListener::bind("127.0.0.1:10000").await.unwrap();
+
+        loop {
+            // TCP connect accept. 일반적인 TcpListener와 거의 동일하게 기술 가능.
+            let (mut socket, addr) = listener.accept().await?;
+            println!("accept: {}", addr);
+
+            // spawn을 이용해 async Task 생성.
+            tokio::spawn(async move {
+                // 일반 라이브러리와 똑같이 가능. buffer 읽기 쓰기용 객체 생성
+                let (r, w) = socket.split(); // 읽기 & 쓰기 socket으로 분리
+                let mut reader = io::BufReader::new(r);
+                let mut writer = io::BufWriter::new(w);
+
+                let mut line = String::new();
+                loop {
+                    line.clear(); // Tokio의 read_line 함수는 인수에 전달한 문자열의 끝에 읽은 문자열이 추가되므로
+                                  // 문자열 초기화
+                    match reader.read_line(&mut line).await { // 1행 읽기를 비동기로 실행
+                        Ok(0) => { // connection close
+                            println!("closed: {}", addr);
+                            return;
+                        }
+                        Ok(_) => {
+                            print!("read: {}, {}", addr, line);
+                            writer.write_all(line.as_bytes()).await.unwrap();
+                            writer.flush().await.unwrap();
+                        }
+                        Err(e) => { // Err
+                            println!("error: {}, {}", addr, e);
+                            return
+                        }
+                    }
+                }
+            });
+        }
+    }
 }

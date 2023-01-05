@@ -10,3 +10,4 @@ edition = "2021"
 signal-hook = "0.2.3"
 futures = "0.3.13"
 nix = "0.20.0"
+tokio = { version = "1.4.0", features = ["full"] }
