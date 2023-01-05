@@ -812,4 +812,163 @@ pub fn func_197() {
     // 이렇게 IOSelctor type은 file descriptor와 Waker를 연관짓는다. IOSelector로의 요청은 queue 변수에
     // 요청을 넣고 eventfd에 알린다. channel이 아닌 eventfd에서 수행하는 이유는 IOSelector는 epoll을 이용한
     // file descriptor 감시도 수행해야 하기 때문이다.
+
+    // 다양한 Future 구현
+    // TCP connection request를 받아들이고 해당 connection에서의 데이터 '읽기'를 비동기화시키는 구현을 살펴보자.
+    // (쓰기에 대해서도 비동기화가 필요하지만 구현을 단순하게 하기 위해 생략)
+    // 비동기에 TCP의 listen, request를 받아들이기 위한 AsyncListener type을 구현해보자.
+    // 중요한 점은 connection request를 받아들일 때 이를 위한 함수를 직접 호출하는 것이 아니라 Future를 반환한다는 것이다.
+    // 즉 언젠가 Future의 request가 받아들여진다는 것을 의미한다.
+    struct AsyncListener { // async listen용 AsyncListener type은 내부적으로는 TcpListener와 앞에서 구현한
+                           // IOSelector type의 값을 가질 뿐이다.
+        listener: TcpListener,
+        selector: Arc<IOSelector>,
+    }
+
+    impl AsyncListener {
+        // TcpListener의 초기화 처리를 감싼 함수. listen용 함수정의로 non-blocking으로 설정해 비동기 프로그래밍을 가능케 함.
+        fn listen(addr: &str, selector: Arc<IOSelector>) -> AsyncListener {
+            // listen 주소 지정
+            let listener = TcpListener::bind(addr).unwrap();
+            // non-blocking으로 설정
+            listener.set_nonblocking(true).unwrap();
+
+            AsyncListener {
+                listener: listener,
+                selector: selector,
+            }
+        }
+
+        // connection request를 받아들이기 위한 Future 리턴. 실제로 요청을 받아들이지는 않고 이를 수행할 Future를 반환한다.
+        // 따라서 accept().await로 하면 실제 request를 비동기로 받아들인다.
+        fn accept(&self) -> Accept {
+            Accept { listener: self }
+        }
+    }
+
+    impl Drop for AsyncListener {
+        fn drop(&mut self) { // 객체 파기 처리이며 단순히 epoll에 대한 등록을 해제한다.
+            self.selector.unregister(self.listener.as_raw_fd());
+        }
+    }
+    // listen함수는 TcpListener type의 초기화 처리를 감싼 것(일반적으로 쓰는 new와 비슷)이지만 TcpListener를
+    // non-blocking화한 것이 특징이다(AsyncListener의 listener filed를 non-blocking 처리). 보통 connection을
+    // 받아들이는 함수는 blocking 호출이며 받아들일 connection이 도착할 때까지 해당 함수는 정지한다. 한편 non-blocking으로
+    // 설정하면 받아들일 connection이 없을 때는 error를 반환하고 즉시 함수를 종료한다. 함수 호출이 blocking되면 해당 스레드를
+    // 점유하게 되므로 동시에 실행하기 위해서는 non-blocking해서 필요할 때 호출할 수 있도록 해야 한다.
+    //
+    // 다음은 비동기로 request를 받아들이는 Future를 구현한 예. 이 Future에는 non-blocking으로 request를 받고,
+    // request를 받을 수 있을 때는 읽기와 쓰기 stream 및 주소를 반환하고 종료한다. 받아들일 connection이 없을 때는
+    // listen socket을 epoll에 감시 대상으로 추가하고 실행을 중단한다.
+    struct Accept<'a> {
+        listener: &'a AsyncListener,
+    }
+
+    impl<'a> Future for Accept<'a> {
+        // 반환값 type
+        type Output = (
+            AsyncReader,            // 비동기 읽기 스트림
+            BufWriter<TcpStream>,   // 쓰기 스트림
+            SocketAddr,             // 주소
+        );
+
+        fn poll(self: Pin<&mut Self>,
+                cx: &mut Context<'_>) -> Poll<Self::Output> {
+            // request를 non-blocking으로 받아들임
+            match self.listener.listener.accept() { // accept()를 호출해 connection을 받아들인다. 단 이는
+                                                    // 앞에서 설정했으므로 non-blocking으로 실행된다.
+                Ok((stream, addr)) => {
+                    // 요청을 받아들이면 읽기와 쓰기용 객체 스트림을 생성하고 객체 및 주소 반환
+                    let stream0 = stream.try_clone().unwrap();
+                    Poll::Ready((
+                        AsyncReader::new(stream0, self.listener.selector.clone()),
+                        BufWriter::new(stream),
+                        addr,
+                    ))
+                }
+                Err(err) => {
+                    // 받아들일 connection이 없는 경우 WouldBlock이 Err로 반환된다. WouldBlock이 반환되면
+                    // epoll의 감시 대상에 listen socket을 등록해 Pending을 반환하고 함수를 중단한다.
+                    if err.kind() == std::io::ErrorKind::WouldBlock {
+                        self.listener.selector.register(
+                            EpollFlags::EPOLLIN,
+                            self.listener.listener.as_raw_fd(),
+                            cx.waker().clone(),
+                        );
+                        Poll::Pending
+                    } else {
+                        panic!("accept: {}", err);
+                    }
+                }
+            }
+        }
+    }
+    // 이번 구현에서는 '읽기'에만 비동기로 대응하므로 읽기 스트림에 AsyncReader를 반환한다. 받아들일 connection이 없으면
+    // WouldBlock이 error로 반환된다. 반환된 후 epoll의 감시 대상에 listen socket을 추가해 Pending을 반환하고 함수를 중단한다.
+
+    // 비동기 읽기용 type을 구현한 예. 여기서는 단순히 TcpStream을 non-blocking으로 설정해서 1행을 읽는 Future를 반환한다.
+    struct AsyncReader {
+        fd: RawFd,
+        reader: BufReader<TcpStream>,
+        selector: Arc<IOSelector>,
+    }
+
+    impl AsyncReader {
+        fn new(stream: TcpStream, selector: Arc<IOSelector>) -> AsyncReader {
+            // TcpStream을 non-blocking으로 설정
+            stream.set_nonblocking(true).unwrap();
+            AsyncReader {
+                fd: stream.as_raw_fd(),
+                reader: BufReader::new(stream),
+                selector: selector
+            }
+        }
+
+        // 1행을 읽기 위한 Future 반환
+        fn read_line(&mut self) -> ReadLine {
+            ReadLine { reader: self }
+        }
+    }
+
+    impl Drop for AsyncReader {
+        fn drop(&mut self) {
+            self.selector.unregister(self.fd);
+        }
+    }
+
+    // 다음은 실제로 비동기 읽기를 수행하는 Future의 구현이다. 여기서는 Accept와 마찬가지로 non-blocking으로 읽기를
+    // 수행하여 읽기에 성공한 경우에는 결과를 반환하고 읽을 수 없는 경우에는 epoll의 감시 대상에 file descriptor를 등록한다
+    struct ReadLine<'a> {
+        reader: &'a mut AsyncReader,
+    }
+
+    impl<'a> Future for ReadLine<'a> {
+        // 반환값의 type
+        type Output = Option<String>;
+
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let mut line = String::new();
+            // 비동기 읽기
+            match self.reader.reader.read_line(&mut line) { // 1행 읽기를 비동기로 실행. 읽기 바이트 수가
+                Ok(0) => Poll::Ready(None),         // 0인 경우에는 connection 클로즈. None 반환
+                Ok(_) => Poll::Ready(Some(line)),   // 1행 읽기 성공시 읽은 행 반환
+                Err(err) => {
+                    // 읽을 수 없으면 epoll에 등록
+                    // 읽어야 할 데이터가 없는 경우에는 WoludBlock 에러가 반환되므로 epoll에 file descriptor를 감시 대상에
+                    // 등록하고 Pending을 반환한다.
+                    if err.kind() == std::io::ErrorKind::WouldBlock {
+                        self.reader.selector.register(
+                            EpollFlags::EPOLLIN,
+                            self.reader.fd,
+                            cx.waker().clone(),
+                        );
+                        Poll::Pending
+                    } else {
+                        Poll::Ready(None)
+                    }
+                }
+            }
+        }
+    }
+    // 여기까지가 connection을 받아들이고 데이터를 읽는 Future의 구현이다. 이들을 사용하면 동시서버를 보다 추상적으로 기술할 수 있다다.
 }
