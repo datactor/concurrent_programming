@@ -31,7 +31,7 @@ use crate::ch03_synchronous_processing01::{spinlock_acquire, spinlock_release};
 /// NOTE_ 스테이트 머신은 내부에 상태를 가지고 있는 추상적인 기계이며, 입력에 따라 내부 상태가 바뀐다(전이).
 /// 예를 들어 자동 판매기도 스테이트 머신이며, 초기 상태의 자동 판매기에 동전을 넣으면 '초기 상태'에서 '동전이 투입된
 /// 상태'로 전이된다. enum
-#[test]
+// #[test]
 pub fn func_144p() {
     use std::sync::{Arc, Mutex};
     use std::thread;
@@ -70,7 +70,7 @@ pub fn func_144p() {
 
 /// RW락은 특히나 데드락을 주의해야 함. 다음 예제는 B.Quin 등이 보고한 데드락을 발생시키는 예다.
 /// Rust로 구현된 앱에서실제로 발견된 버그이기도 하다.
-#[test]
+// #[test]
 pub fn func_145p() {
     use std::sync::{Arc, RwLock};
     use std::thread;
@@ -90,7 +90,7 @@ pub fn func_145p() {
 // Read락과 Write락은 동시에 획득할 수 없기 때문에 당연히 데드락 상태가 됨.
 
 /// func_145p()의 RW락을 회피하기 위한 방법 중 하나
-#[test]
+// #[test]
 pub fn func_146p() {
     use std::sync::{Arc, RwLock};
     use std::thread;
@@ -114,7 +114,7 @@ pub fn func_146p() {
 // 이라고 부른다.
 
 /// RwLock을 사용한 데드락의 다른 예
-#[test]
+// #[test]
 pub fn func_147p_1() {
     use std::sync::{Arc, RwLock};
     use std::thread;
@@ -131,7 +131,7 @@ pub fn func_147p_1() {
 
 /// 147p_1에선 Read락(LockResult)에서 반환된 RwLockReadGuard을 _flag에 저장함. 그러므로 이 변수의 스코프를 벗어날
 /// 때까지 락이 반환되지 않으며 Write락을 획득하려하면 데드락이 발생함. 다음처럼 구현하면 데드락이 발생하지 않음.
-#[test]
+// #[test]
 pub fn func_147p_2() {
     use std::sync::{Arc, RwLock};
     use std::thread;
@@ -187,7 +187,7 @@ pub fn func_147p_2() {
 ///
 /// 이 예를 보면 은행원의 자본과 각 기업이 필요로 하는 자본을 미리 알고 있는 경우 어떻게 대출하면 데드락이 되는지
 /// 예측할 수 있음. 은행원 알고리즘에서는 데드락이 발생하는 상태로 전이하는지 시뮬레이션을 통해 판정함으로써 데드락을 회피함.
-#[test]
+// #[test]
 pub fn func_152p() {
     struct Resource<const NRES: usize, const NTH: usize> {
         available: [usize; NRES],           // 이용 가능한 리소스. available[j]는 j번째 리소스.
@@ -379,7 +379,7 @@ pub fn func_152p() {
 /// 한편 재귀락을 수행해도 처리를 계속할 수 있는 락을 재진입 가능(reentrant)한 락이라고 부른다.
 ///
 /// 재진입 가능한 락의 정의: 재귀락을 수행해도 데드락 상태에 빠지지 않으며 처리를 계쏙할 수 있는 락 메커니즘
-#[test]
+// #[test]
 pub fn func_158p() {
     // 재진입 가능한 Mutex용 type.
     struct ReentLock {
@@ -425,7 +425,7 @@ pub fn func_158p() {
 ///
 /// 러스트의 idioms에 따르면 다른 스레드에 공유 리소스를 전달할때만 클론하고, 동일 스레드 안에서는
 /// 클론해서 이용하지 않는다는 규칙이 있으니 지키자.
-#[test]
+// #[test]
 fn func_161p() {
     use std::sync::{Arc, Mutex};
 
@@ -485,7 +485,7 @@ fn func_161p() {
 
 use std::error::Error;
 /// Rust에서는 signal_hook이라고 하는 crate가 있으며, 시그널을 다룰 때는 이 크레이트를 이용할 것을 권장한다.
-#[test]
+// #[test]
 pub fn func_167p() -> Result<(), Box<dyn Error>>{
     use signal_hook::{iterator::Signals, SIGUSR1};
     use std::{process, thread, time::Duration};
@@ -565,7 +565,7 @@ pub fn func_167p() -> Result<(), Box<dyn Error>>{
 /// - 보호 대상 데이터에는 락 후에만 접근할 수 있다.
 /// - 락 해제는 자동으로 수행된다(스코프를 넘어가면 drop됨).
 /// Rust의 atomic var를 이용한 스핀락의 구현을 기반으로 위의 특징을 어떻게 구현하는지 알아보자.
-#[test]
+// #[test]
 pub fn func_172p() {
     use std::cell::UnsafeCell; // UnsafeCell type. 이 타입은 Rust의 차용 룰을 파기(정확히 말하면 컴파일에 파기)
                                // Mutex 등의 메커니즘을 구현하기 위해서는 반 필수적으로 사용.

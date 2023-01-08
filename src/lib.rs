@@ -49,6 +49,8 @@ mod tests {
         ch04_bugs_and_problems::func_167p();
         // ch04_bugs_and_problems::func_172p();
         // ch05_async_programming::func_178p();
-        ch05_async_programming::func_186p();
+        // ch05_async_programming::func_186p();
+        ch05_async_programming::func_213p();
+        ch05_async_programming::func_214p();
     }
 }

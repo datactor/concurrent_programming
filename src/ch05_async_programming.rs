@@ -28,7 +28,7 @@
 /// 다음 코드는 단순한 interactive server를 구현한 예다. 이 서버는 client로부터의 connection request를 받아
 /// 1행씩 읽으면서 읽은 데이터를 return하고 connection을 종료하는 작동을 반복한다.
 /// 이렇게 읽은 데이터에 대한 응답만 하는 서버를 echo server라 부른다.
-#[test]
+// #[test]
 pub fn func_178p() {
     use std::{
         io::{BufRead, BufReader, BufWriter, Write},
@@ -94,7 +94,7 @@ pub fn func_178p() {
 /// 때 재개하는 작동을 말한다. 송수신 준비가 되지 않은 경우에 송수신 함수가 호출되면 OS는 그 함수들을 호출한 OS 프로세스를
 /// 대기 상태로 만들고, 다른 OS 프로세스를 실행한다.
 /// - non-blocking이면 송수신할 수 없는 경우 즉시 함수에서 반환되므로 송수신 함수를 호출해도 OS 프로세스는 대기 상태가 되지 않는다.
-#[test]
+// #[test]
 pub fn func_181p() {
     use nix::sys::epoll::{
         epoll_create1, epoll_ctl, epoll_wait, EpollCreateFlags, EpollEvent, EpollFlags, EpollOp
@@ -249,7 +249,7 @@ pub fn func_181p() {
 /// 코루틴 버전 Hello, World!를 Rust로 구현한 것이다. Rust에는 Future trait이라 불리는 비동기 trait이 있으므로
 /// https://rust-lang.github.io/async-book/02_execution/02_future.html
 /// 여기에서 future를 사용해 보자.
-#[test]
+// #[test]
 pub fn func_186p() {
     use futures::future::{BoxFuture, FutureExt};
     use futures::task::{waker_ref, ArcWake};
@@ -361,7 +361,7 @@ pub fn func_186p() {
 /// - Waker는 Task를 스케줄링할 때 이용된다(Task에 대한 정보를 가진 Waker가 필요에 따라 실행 Queue에 Task를 넣음).
 /// 위 그림 및 작동방식은 전형적인 예이며, 다른 실행방법도 가능하다.
 /// 이 장에서는 Waker와 Task를 동일 type으로 구현한다.
-#[test]
+// #[test]
 pub fn func_189p() {
     use futures::future::{BoxFuture, FutureExt};
     use futures::task::{waker_ref, ArcWake};
@@ -619,7 +619,7 @@ fn func_194p() {
 /// 감시를 수행하고 event가 발생하면 wake 함수를 호출해 실행 queue에 Task를 등록한다. 따라서 Future의 코드 안에서
 /// 비동기 IO를 수행할 때는 IO Selector로 감시 대상 파일 descriptor 및 Waker를 등록해야 한다.
 /// 다음 코드는 기본적으로는 epoll, TCP/IP, async/await을 이용하기 위해 필요한 것들을 조합한 것이다.
-#[test]
+// #[test]
 pub fn func_197() {
     use futures::{
         future::{BoxFuture, FutureExt},
@@ -674,7 +674,7 @@ pub fn func_197() {
     }
 
     struct IOSelector {
-        wakers: Mutex<HashMAp<RawFd, Waker>>, // fd에서 waker
+        wakers: Mutex<HashMap<RawFd, Waker>>, // fd에서 waker
         queue: Mutex<VecDeque<IOOps>>,        // IO Queue: 그림 5-3의 IO Queue의 변수
         epfd: RawFd,  // epoll의 fd
         event: RawFd, // eventfd의 fd
@@ -765,7 +765,7 @@ pub fn func_197() {
 
             // eventfd를 epoll의 감시 대상에 추가.
             let mut ev = EpollEvent::new(epoll_in, self.event as u64);
-            epoll_ctl(Self.epfd, epoll_add, self.event, &mut ev).unwrap();
+            epoll_ctl(self.epfd, epoll_add, self.event, &mut ev).unwrap();
 
             let mut events = vec![EpollEvent::empty(); 1024];
             //event 발생 감시
@@ -1167,7 +1167,7 @@ pub fn func_197() {
 /// 기능을 사용할 수 있지만 그만큼 컴파일 시간이나 실행 바이너리 크기가 늘어날 가능성이 있다.
 ///
 /// 다음은 Tokio를 이용한 echo server 구현 예.
-#[test]
+// #[test]
 fn func_210p() {
     use tokio::{
         io::{self, AsyncBufReadExt, AsyncWriteExt}, // async용 buffer 읽기 쓰기용 trait
@@ -1212,6 +1212,191 @@ fn func_210p() {
                     }
                 }
             });
+        }
+    } // 비동기 함수 호출에 await이 필요한 것 외에는 대부분 일반 라이브러리와 동일하게 이용할 수 있다.
+    // 이와 같은 코드는 일반 스레드를 사용해도 기술할 수 있지만, Tokio와 같은 비동기 라이브러리를 사용하는 이유는
+    // 실행 시 비용 때문이다. 통상 스레드 생성은 비용이 많이 드는 작업이므로 단위 시간당 connection 도착 수가
+    // 증가하면 계산 자원이 부족해진다. Tokio 같은 비동기 라이브러리는 connection이 도착할 때마다 스레드를
+    // 생성하는 것이 아니라 미리 생성해둔 스레드를 이용해 각 Task를 실행한다.
+}
+
+/// Tokio 사용 이유? 동기형 코딩이 가능함, 간단함, 실행 시 비용이 저렴함(통상 스레드 생성은 비용이 많이드는데,
+/// Tokio는 connection이 도착할 때마다 스레드를 생성하는 것이 아니라 미리 생성해둔 스레드를 이용해 각 Task를
+/// 실행한다.
+///                     ┌-> 스레드 1 (Executor)
+///                     ├-> 스레드 2 (Executor)
+/// Task --> 실행 Queue -├-> 스레드 3 (Executor)
+///                     └-> 스레드 4 (Executor)
+/// 그림 5-4 멀티스레드에서의 실행 예
+/// 4개의 스레드가 1개의 실행 Queue에서 태스크를 꺼내고 각 스레드의 Executor가 병행으로 Task를 실행한다.
+/// 이런 실행 모델을 thread pool이라 부른다. 즉, 동적으로 스레드를 생성하는 것이 아니라 풀에 있는 스레드가
+/// 실행을 수행한다. Tokio에서는 기본적으로 실행 환경의 CPU 코어 수만큼 스레드를 실행한다.
+///
+/// NOTE_ 실제로 처리를 수행하기 위한 스레드는 worker thread라 부른다. 스레드 풀이든 동적 생성이든 관계없이
+///       모든 실행 모델에서 worker thread라 부른다.
+///
+/// 중요하기 때문에 반복해서 강조하자면 async 중 blocking 수행 등의 코드를 입력하면 실행 속도가 느려지거나
+/// lock이 발생한다. blocking을 수행하는 적극적인 함수는 sleep이다.
+/// 다음 코드는 async 안에서 일반적인 sleep을 호출하는 좋지 않은 예
+// #[test]
+pub fn func_213p() {
+    use std::{thread, time}; // 일반 스레드용 모듈
+
+    #[tokio::main]
+    async fn main() {
+        // join으로 종료 대기
+        tokio::join!(async move { // join! macro를 이용하면 여러 Task의 종료를 wait하며,
+            // 모든 분기가 완료되면 반환한다. join! macro는 비동기 함수, 클로저 및 블록 내부에서 사용해야 하며,
+            // 비동기 식 list를 가져와 동일한 작업에서 동시에 평가한다.
+            // 결과를 반환하는 (await도 결과를 반환함) 비동기 식으로 작업할 때 join!한다면 Err로 완료되었는지
+            // 여부에 관계 없이 모든 분기가 완료될 때까지 wait한다.(try_join은 Err발생하면 일찍 반환함)
+            // 10초 sleep(10초간 일반 스레드용 함수로 대기)
+            let ten_secs = time::Duration::from_secs(10);
+            tokio::time::sleep(ten_secs); // 10초간 blocking 수행. 10초간 제어권을 넘겨주지 않음
+            // 이 함수(tokio::sleep())를 호출하면 Tokio의 Executor에 의해 Task가 worker thread에서
+            // 대피되므로 다른 Task를 동시에 실행할 수 있게 된다. 코드상의 차이는 미세하지만 그 차이는 중요하다.
+        });
+    }
+}
+
+/// Tokio 같은 비동기 라이브러리를 사용할 때는 Mutex의 사용도 문제가 된다. Mutex는 일반적인
+/// std::sync::Mutex를 사용가능한 경우와 비동기 라이브러리가 제공하는 Mutex를 사용해야 하는 경우가 있다.
+/// std::sync::Mutex를 사용한 예. 공유 변수를 lock해서 증가시키는 간단한 예이다.
+// #[test]
+pub fn func_214p() {
+    use std::sync::{Arc, Mutex};
+
+    const NUM_TASKS: usize = 4; // Task 수
+    const NUM_LOOP: usize = 100_000; // loop 수
+
+    #[tokio::main]
+    async fn main() -> Result<(), tokio::task::JoinError> {
+        let val = Arc::new(Mutex::new(0)); // 공유 변수(여러 Task에서 공유)
+        let mut v = Vec::new();
+        for _ in 0..NUM_TASKS {
+            let n = val.clone(); // strong count 증가
+            let t = tokio::spawn(async move { // NUM_TASKS 수만큼 Task 생성
+                for _ in 0..NUM_LOOP {
+                    let mut n0 = n.lock().unwrap();
+                    *n0 += 1; // 각 Task에서 lock을 획득하고 증가
+                }
+            });
+
+            v.push(t);
+        }
+
+        for i in v {
+            i.await?;
+        }
+
+        println!("COUNT = {} (expected = {})", *val.lock().unwrap(), NUM_LOOP * NUM_TASKS);
+
+        Ok(())
+    }
+    // 이와 같이 공유 변수에 접근하는 것만으로 std::sync::Mutex를 이용해도 문제가 없으며 실행 속도면에서도
+    // 뛰어나다. 한편 lock을 획득한 상태에서 await을 수행하려면 비동기 라이브러리가 제공하는 Mutex를 사용해야 한다.
+}
+
+/// lock을 획득한 상태에서 await을 수행하는 예
+fn func_215p() {
+    use std::{sync::Arc, time};
+    use tokio::sync::Mutex; // lock을 획득한 상태에서 await을 수행하려면 비동기 라이브러리가 제공하는 Mutex 사용
+
+    const NUM_TASKS: usize = 8;
+
+    // lock을 하고 공유 변수를 증가시키기만 하는 Task.
+    async fn lock_only(v: Arc<Mutex<u64>>) {
+        let mut n = v.lock().await;
+        *n += 1;
+    }
+
+    // lock 상태에서 await을 수행하는 task
+    async fn lock_sleep(v: Arc<Mutex<u64>>) {
+        let mut n = v.lock().await;
+        let ten_secs = time::Duration::from_secs(10);
+        tokio::time::sleep(ten_secs).await; // 문제가 되는 위치. 공유 변수 lock을 획득한 상태에서 await을 수행한다.
+        *n += 1;
+    }
+
+    #[tokio::main]
+    async fn main() -> Result<(), tokio::task::JoinError> {
+        let val = Arc::new(Mutex::new(0));
+        let mut v = Vec::new();
+
+        // lock_sleep Task 생성
+        let t = tokio::spawn(lock_sleep(val.clone()));
+        v.push(t);
+
+        for _ in 0..NUM_TASKS {
+            let n = val.clone();
+            let t = tokio::spawn(lock_only(n)); // lock_only Task 생성
+            v.push(t);
+        }
+
+        for i in v {
+            i.await?;
+        }
+        Ok(())
+    }
+}
+// 이와 같이 lock상태에서 await을 수행하기 위해 비동기 라이브러리가 제공하는 tokio::sync::Mutex를 이용해 배타 제어를
+// 수행한다. 만약 std::Sync::Mutex를 사용하면 deadlock이 발생할 수 있다.
+// 다음 그림은 std::sync::Mutex를 사용할 때 일어나는 deadlock의 예를 보여준다.
+//                                                                  ┌-> 스레드 1 lock_only: lock()
+// Task(lock_sleep:(대기 상태); lock(); sleep.await) --> 실행 Queue --┤
+//                                                                  └-> 스레드 2 lock_only: lock()
+// 그림 5-5 std::sync::Mutex를 이용한 deadlock
+//
+// lock_sleep Task는 lock을 획득 후 await 상태로 대기 상태가 된다(lock을 Poll::Result에 넣어 반환한 상태).
+// 그리고 각 worker thread에서는 lock_only Task가 실행되어 lock 함수가 호출된다.
+// 그러나 lock_sleep Task가 lock을 획득한 채 대기 상태에 있기 때문에
+// lock_only Task는 영원히 lock을 획득하지 못하고 deadlock 상태가 된다.
+//
+// 이렇게 std::sync::Mutex의 lock을 획득한 상태에서 await을 수행하면 deadlock이 발생할 가능성이 있다.
+// 하지만 앞의 코드 구현에서 std::sync::Mutex를 이용하고자 해도 컴파일 에러가 발생한다.
+// 이것은 lock을 반환하는 MutexGuard type에는 Sync는 물론 Send trait도 구현되어 있지 않기 때문이다.
+// 즉, lock_sleep Task의 Future(상태)는 MutexGuard값을 가져야 하나 스레드 사이에서 공유와 소유권을
+// 전송할 수 없기 때문에 컴파일 에러가 발생한다.
+// async/await의 메커니즘을 파악하지 않으면 이런 컴파일 에러가 발생하는 원인을 이해하기 쉽지 않다. 하지만 메커니즘을
+// 이해하면 Rust는 동시성 프로그래밍에 대한 문제를 컴파일 시 적극적으로 배제하고, 안전하게 동시성 프로그래밍을 기술할
+// 수 있다는 것도 이해할 수 있다.
+//
+/// async/await을 이용할 때는 channel에 대해서도 주의해야 한다. std::sync::mpsc::channel 등의 채널은 송수신 시에
+/// 스레드를 block할 가능성이 있기 때문이다. 따라서 Tokio등의 비동기 라이브러리에서는 async/await용 채널을 제공한다.
+/// Tokio의 경우에는 다음과 같은 channel을 이용할 수 있다.
+///  mpsc - 다수 생산자, 단일 소비자 채널. std::sync::mpsc::channel의 async/await 버전
+///  oneshot - 단일 생산자, 단일 소비자 채널. 값을 한 번만 송수신할 수 있다.
+///  broadcast - 다수 생산자, 다수 소비자 채널
+///  watch - 단일 생산자, 다수 소비자 채널. 값을 감시할 때 이용하며 수신 측에서는 최신 값만 얻을 수 있다.
+/// mpsc, broadcast, watch는 채널을 경유한 송수신이나 약속을 구현하는 채널이며 oneshot은 채널이라기 보다는 미래에
+/// 결정되는 값이라는 Future 자체를 구현하기 위해 이용한다.
+/// 다음은 oneshot의 간단한 예로 미래에 결정되는 값을 모델화한 예다.
+fn func_217p() {
+    use tokio::sync::oneshot;
+
+    // 미래 언젠가의 시점에서 값이 결정되는 함수. 미래 언젠가의 시점에서 값이 결정되는 함수 정의. 여기서는 간단히 sleep만
+    // 한다. oneshot 송신 측의 endpoint를 받아 sleep한 후 값을 써넣는다.
+    async fn set_val_later(tx: oneshot::Sender<i32>) {
+        let ten_secs = std::time::Duration::from_secs(10);
+        tokio::time::sleep(ten_secs).await;
+        if let Err(_) = tx.send(100) { // send함수에 값을 쓴다.
+            println!("failed to send");
+        }
+    }
+
+    #[tokio::main]
+    pub async fn main() {
+        let (tx, rx) = oneshot::channel(); // oneshot 생성. 지금까지의 Rust
+                                                                   // channel과 마찬가지로 송신과 수신
+                                                                   // endpoint는 나눠져 있다.
+        tokio::spawn(set_val_later(tx)); // 미래 언젠가의 시점에 값이 결정되는 함수를 호출하고
+                                               // 송수신 endpoint를 전달한다.
+        match rx.await { // 값이 결정될 때까지 대기.
+            Ok(n) => println!("n = {}", n),
+            Err(e) => {
+                println!("failed to receive: {}", e);
+                return;
+            }
         }
     }
 }
