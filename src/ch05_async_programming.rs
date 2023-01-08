@@ -1399,4 +1399,46 @@ fn func_217p() {
             }
         }
     }
+} // oneshot을 사용하면 미래 언젠가의 시점에서 값이 결정되는 변수를 보통 변수처럼 다룰 수 있다. 단, 송신 또는 수신 측
+// endpoint의 한쪽만 파기된 경우에는 반대 측 지점에서 수신 또는 송신을 수행하고자 하면 에러가 발생한다.
+
+/// 마지막으로 blocking 함수의 취급에 관해 알아보자. 우리는 async/await에서는 blocking 함수(sleep등)의 호출을
+/// 회피해야 한다고 알고 있다. 하지만 처리 내용에 따라서는 blocking 함수를 호출할 필요가 있다. 그런 경우에는
+/// spawn_blocking 함수를 이용해 blocking을 수행하는 함수 전용 스레드로 실행하도록 한다.
+/// 아래의 예시에서는 do_block과 async의 print를 동시에 실행한다.
+fn func_218p() {
+    fn do_block(n: u64) -> u64 {
+        let ten_secs = std::time::Duration::From_secs(10);
+        std::thread::sleep(ten_secs);
+        n
+    }
+
+    // async 함수
+    async fn do_print() {
+        let sec = std::time::Duration::from_secs(1);
+        for _ in 0..20 {
+            tokio::time::sleep(sec).await;
+            println!("wake up");
+        }
+    }
+
+    #[tokio::main]
+    pub async fn main() {
+        // blocking 함수 호출
+        let mut v = Vec::new();
+        for n in 0..32 {
+            let t = tokio::task::spawn_blocking(move || do_block(n)); // 1
+            v.push(t);
+        }
+
+        // async 함수 호출
+        let p = tokio::spawn(do_print()); // 2
+
+        for t in v {
+            let n = t.await.unwrap();
+            println!("finished: {}", n);
+        }
+
+        p.await.unwrap()
+    }
 }
