@@ -1,44 +1,34 @@
-// 비동기 함수 test해보기
-use std::{sync::Arc, time};
-use std::thread::sleep;
-use futures::TryFutureExt;
-use tokio::sync::Mutex; // lock을 획득한 상태에서 await을 수행하려면 비동기 라이브러리가 제공하는 Mutex 사용
-const NUM_TASKS: usize = 8;
-
-// lock을 하고 공유 변수를 증가시키기만 하는 Task.
-async fn lock_only(v: Arc<Mutex<u64>>) {
-    let mut n = v.lock().await;
-    *n += 1;
+fn do_block(n: u64) -> u64 {
+    let ten_secs = std::time::Duration::from_secs(10);
+    std::thread::sleep(ten_secs);
+    n
 }
 
-// lock 상태에서 await을 수행하는 task
-async fn lock_sleep(v: Arc<Mutex<u64>>) {
-    let mut n = v.lock().await;
-    let ten_secs = time::Duration::from_secs(10);
-    tokio::time::sleep(ten_secs).await; // 문제가 되는 위치. 공유 변수 lock을 획득한 상태에서 await을 수행한다.
-    *n += 1;
+// async 함수
+async fn do_print() {
+    let sec = std::time::Duration::from_secs(1);
+    for _ in 0..20 {
+        tokio::time::sleep(sec).await;
+        println!("wake up");
+    }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), tokio::task::JoinError> {
-    let val = Arc::new(Mutex::new(0));
+pub async fn main() {
+    // blocking 함수 호출
     let mut v = Vec::new();
-
-    // lock_sleep Task 생성
-    let t = tokio::spawn(lock_sleep(val.clone()));
-    v.push(t);
-
-    // sleep(time::Duration::from_secs(5));
-
-    for i in 0..NUM_TASKS {
-        let n = val.clone();
-        let t = tokio::spawn(lock_only(n)); // lock_only Task 생성
-        v.push(t);
+    for n in 0..32 {
+        let t = tokio::task::spawn_blocking(move || do_block(n)); // blocking 함수를
+        v.push(t);                                                         // blocking 처리 전용 스레드에서 호출
     }
 
-    for i in v {
-        i.await?;
+    // async 함수 호출
+    let p = tokio::spawn(do_print()); // do_print 함수를 호출해서 정기적으로 print
+
+    for t in v {
+        let n = t.await.unwrap();
+        println!("finished: {}", n);
     }
 
-    Ok(())
+    p.await.unwrap()
 }

@@ -1,3 +1,5 @@
+use futures::TryFutureExt;
+
 /// ch05 비동기 프로그래밍
 /// 어떤 일을 수행하는 도중에 발생하는 일을 'event' 또는 'interrupt'라고 부른다. Rust나 C같은 소위 절차적 프로그래밍
 /// (procedural programming) 언어에서는 기본적으로 처리는 실행 순서대로 기술해야 한다. 처리를 실행 순서대로 기술하지
@@ -1408,15 +1410,32 @@ fn func_217p() {
 /// 아래의 예시에서는 do_block과 async의 print를 동시에 실행한다.
 fn func_218p() {
     fn do_block(n: u64) -> u64 {
-        let ten_secs = std::time::Duration::From_secs(10);
+        let ten_secs = std::time::Duration::from_secs(10); // 10초간 blocking 하는 Duration 객체 생성
+        // thread::sleep은 현재의 thread를 멈춘다(blocking).
         std::thread::sleep(ten_secs);
-        n
+        n // 그 후 u64인 n 반환함.
     }
 
     // async 함수
     async fn do_print() {
         let sec = std::time::Duration::from_secs(1);
         for _ in 0..20 {
+            // tokio::time::sleep은 현재의 task를 멈춘다(non-blocking).
+            // 정확하게는 지정된 시간동안 현재 작업을 일시 중지하는 Future를 반환한다.
+            // Future가 반환되었으니, task를 실제로 일시 중지하려면 await해야함.
+            // 만일 sleep Future를 '.await'하지 않으면 task가 실제로 일시 중지되지 않음.
+            // 대신 sleep Future가 반환되고 프로그램의 다른 부분에서 사용될 수 있음.
+
+            // 일반적으로 주어진 시간 동안 현재 task를 일시 중지 하려면, await를 사용하고,
+            // 프로그램에서 나중에 사용할 sleep Future를 생성하는 것이 목적이라면 await을 달지 않으면 됨.
+            //
+            // // e.g.
+            // let sleep_future = delay_for(Duration::from_secs(1));
+            // // Do some other work
+            //
+            // // Pause the current task for 2 seconds
+            // sleep_future.await;
+
             tokio::time::sleep(sec).await;
             println!("wake up");
         }
@@ -1424,21 +1443,32 @@ fn func_218p() {
 
     #[tokio::main]
     pub async fn main() {
-        // blocking 함수 호출
         let mut v = Vec::new();
         for n in 0..32 {
-            let t = tokio::task::spawn_blocking(move || do_block(n)); // 1
-            v.push(t);
+            // spawn_blocking: JoinHandle을 반환하는 별도의 blocking 스레드 생성,
+            // 블로킹 전용 스레드에서 클로저(do_block(blocking 함수))를 실행하고 JoinHandle을 반환함.
+            // 스레드를 새로 만들고 새로 만들어진 스레드를 10초간 blocking(새로 만들어진 스레드를 blocking함! main 스레드는 계속 돌아감)
+            let t = tokio::task::spawn_blocking(move || do_block(n));
+            // main스레드는 돌아가야 하는데 t에 의존하는 v.push(t)는 아직 반환되지 않았는데 왜 컴파일이 될까?
+            // : 클로저를 move시켜 환경을 새로 만들어진 스레드로 넘겨버렸기 때문에 v.push(t)도 새로 만든 스레드에
+            // 들어감. 즉, 새로 만들어진 스레드에서 10초 대기 후 v.push(t)하는 것임.
+            v.push(t); // move closure를 통해 새로운 스레드로 옮겨진 JoinHandle을 vector에 push
+            // 여기서 공유 변수인 v에 arc mutex lock이 없어도 안전한 이유(Rust가 허용하는 이유)?
+            // v에 data race 조건 요소가 없기 때문. 그저 출력만 할 뿐이다.
         }
 
-        // async 함수 호출
-        let p = tokio::spawn(do_print()); // 2
+        // async 함수 호출. 비동기 task로 do_print 실행, task를 나타내는 JoinHandle을 반환함.
+        let p = tokio::spawn(do_print());
 
-        for t in v {
-            let n = t.await.unwrap();
+        for t in v { // JoinHandles의 Vector를 반복하고, 각 Vector를 차례로 기다림. 이로 인해 각 blocking task가 완료될 때까지 main async task가 blocking 됨.
+                                    // blocking 작업은 별도의 스레드에서 동시에 실행되기 때문에 어떤 순서로든 완료될 수 있음.
+            let n = t.await.unwrap(); // t.await을 호출하면 t로 표시된 blocking task가 실행을 마칠 때까지 현재 비동기 task를 block함.
             println!("finished: {}", n);
         }
 
-        p.await.unwrap()
+        p.await.unwrap() // p로 표시된 async blocking task가 실행을 마칠 때까지 현재 비동기 task를 block함
     }
 }
+// blocking 함수인 do_block을 여기서는 단순히 슬립 한다. 이 함수에서는 std::thread::sleep을 사용하고 있으므로,
+// sleep상태라 해도 worker thread들 점유하게 된다. 그러나 spawn_blocking 함수에서 blocking용 스레드를 생성하고
+// 거기서 이 함수를 호출하므로 deadlock에 빠지지 않는다
