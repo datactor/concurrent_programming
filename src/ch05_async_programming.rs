@@ -1,5 +1,3 @@
-use futures::TryFutureExt;
-
 /// ch05 비동기 프로그래밍
 /// 어떤 일을 수행하는 도중에 발생하는 일을 'event' 또는 'interrupt'라고 부른다. Rust나 C같은 소위 절차적 프로그래밍
 /// (procedural programming) 언어에서는 기본적으로 처리는 실행 순서대로 기술해야 한다. 처리를 실행 순서대로 기술하지
