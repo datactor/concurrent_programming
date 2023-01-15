@@ -151,10 +151,173 @@
 //    다소 overhead가 있다.
 
 
-// 6.2 cooperative green thread 구현
-// Rust를 사용해 AArc64상에서 작동하는 간단한 cooperative multi-tasking 구현을 해보자. 이번 구현은 userland
-// thread이며, userland의 software가 독자적으로 제공한 thread mechanism은 일반적으로 green thread라 부른다.
-// green thread는 OS의 스레드와 비교해 스레드 생성과 파기 비용을 줄일 수 있으므로
-fn func_() {
+/// 6.2 cooperative green thread 구현
+/// Rust를 사용해 AArc64상에서 작동하는 간단한 cooperative multi-tasking 구현을 해보자. 이번 구현은 userland
+/// thread이며, userland의 software가 독자적으로 제공한 thread mechanism은 일반적으로 green thread라 부른다.
+/// green thread는 OS의 스레드와 비교해 스레드 생성과 파기 비용을 줄일 수 있으므로 Erlang, Go, Haskell 같은 동시성
+/// 프로그래밍이 뛰어난 처리 계열에서 이용된다. 이들 언어의 green thread 구현은 mulit-thread로 작동하지만 여기서는
+/// 간단히 하기 위해 single-thread로 작동하는 green thread를 구현해보자. single-thread 버전의 구현이기는 하지만
+/// 이 구현을 확장하면 multi-thread로 만들 수 있다.
+///
+/// 6.2.1 file 구성과 type, func, var
+/// 이 절에서는 이번 구현의 구성과 dependency crate 등을 알아보자. 다음은 이 절과 6.3절 'actor model 구현'에서
+/// 이용하는 파일, 함수, 변수를 보여준다.
+///
+/// 표 6-1 cooperative green thread 구현에 이용하는 파일
+/// Cargo.toml          Cargo용 파일
+/// build.rs            빌드용 파일
+/// asm/context.S       context switch를 수행하기 위한 assembly
+/// src/main.rs         main func용 파일
+/// src/green.rs        green thread용 파일
+///
+/// 표 6-2 context switch용 함수(context.S)
+/// set_context         현재의 context를 저장
+/// switch_context      context switch를 수행
+///
+/// 표 6-3 context 정보용 type(src/green.rs)
+/// Registers           CPU register의 값을 저장하기 위한 type
+/// Context             context를 저장하기 위한 type
+///
+/// 표 6-4 context switch를 수행하기 위한 함수(src/green.rs)
+/// spawn_from_main     main함수에서 thread 생성
+/// spawn               thread spawn 수행
+/// schedule            scheduling 수행
+/// rm_unused_stack     불필요한 stack 삭제
+/// get_id              자신의 thread ID 획득
+/// send                message 송신
+/// recv                message 수신
+///
+/// 표 6-5 global variables(src/green.rs)
+/// CTX_MAIN            main 함수의 context
+/// UNUSED_STACK        불필요해진 stack 영역
+/// CONTEXTS            실행 queue
+/// ID                  현재 이용 중인 thread의 ID
+/// MESSAGES            message queue
+/// WAITING             대기 thread 집합
+///
+/// CAUTION_ 이번 구현에서는 간단히 하기 위해 global var를 이용하지만 Rust에서는 global var 사용을 권장하지 않음.
+///
+/// external crates
+/// [dependencies]
+/// nix = "0.20.0"
+/// rand = "0.8.3"
+///
+/// nix? 유닉스 계열의 OS에서 제공하는 API의 래퍼 라이브러리
+/// rand(random) 난수 생성용 crate
+fn build_rs() {
+    use std::process::Command;
 
+    const ASM_FILE: &str = "asm/context.S";
+    const O_FILE: &str = "asm/context.o";
+    const LIB_FILE: &str = "asm/libcontext.a";
+
+    fn main() {
+        // build-time dependency
+        Command::new("cc").args(&[ASM_FILE, "-c", "-fPIC", "-o"])
+            .arg(O_FILE)
+            .status().unwrap();
+        Command::new("ar").args(&["crus", LIB_FILE, O_FILE])
+            .status().unwrap();
+
+        // asm을 라이브러리 검색 경로에 추가
+        println!("cargo:rustc-link-search=native={}", "asm");
+        // libcontext.a라는 정적 라이브러리 링크
+        println!("cargo:rustc-link-lib=static=context");
+        // asm/context.S라는 파일에 의존
+        println!("cargo:rerun-if-changed=asm/context.S");
+    }
 }
+// 이번 구현에서는 어셈블리 파일의 컴파일과 링크도 수행하므로 이와 같이 build.rs 파일을 준비해야 한다. 어셈블리 파일을
+// 컴파일하기 위해 cc 명령어와 ar 명령어가 필요하므로 unix환경이 좋다. Ubuntu는 다음 명령을 실행하면 개발도구,
+// 라이브러리 및 헤더가 설치된다
+// $ sudo apt install build-essential
+//
+// build.rs vs main.rs?
+// build.rs는 패키지에 대한 build-time dependencies 및 custom build scripts를 지정할 수 있음.
+// 이 파일은 패키지의 루트에 있으며, main.rs보다 먼저 실행된다.
+// main.rs와 build.rs에서 직접 빌드 스크립트를 작성하는 것의 주요 차이점은 build.rs는 build 시에만 실행되는 반면
+// main.rs의 코드는 run-time에 실행된다는 것. build.rs를 사용하면 build시간 종속성을 지정하고 build 프로세스를
+// 더 자세히 구성하는데 사용할 수 있음.
+// build-time dependencies를 지정하거나, custom build scripts를 실행할 필요가 없다면 build.rs를 만들 필요 없다.
+// e.g.)
+// build-time dependency로 C 라이브러리를 빌드하기 위해 cc crate를 사용하는 예:
+// extern crate cc;
+//
+// fn main() {
+//     cc::Build::new()
+//         .file("src/lib.c")
+//         .compile("libmylib.a");
+// }
+// 이 script는 소스 파일 src/lib.c에서 libmylib.a라는 C 라이브러리를 빌드.
+// 빌드된 라이브러리는 Rust 패키지에 연결됨.
+//
+// 커스텀 빌드 라이브러리 스크립트:
+// extern crate protoc_rust;
+//
+// fn main() {
+//     protoc_rust::Codegen::new()
+//         .out_dir("src/")
+//         .inputs(&["proto/message.proto"])
+//         .run()
+//         .expect("protoc");
+// }
+// proto/message.proto 파일에서 Rust 코드를 생성하기 위해 protoc_rust crate를 사용.
+// 생성된 코드는 src/ 디렉토리에 있음.
+//
+// build-time dependencies?
+// 패키지를 빌드하는데 필요하지만 run-time에는 필요하지 않은 종속성.
+// custom build scripts?
+// 빌드 프로세스 중에 실행되는 스크립트. 이러한 스크립트를 사용해 코드를 생성, 파일을 전처리, 패키지를 빌드하는데 필요한
+// 기타 작업을 수행할 수 있음. 커스텀 빌드 스크립트의 일반적인 예는 다른 source file에서 rust code를 생성하는
+// 코드 생성기이다.
+//
+// build.rs는 Cargo에 컴파일 방법을 지정하기 위해 이용하는 파일이며, Cargo는 build.rs의 내용에 기반해 Rust의
+// 컴파일을 수행한다. build.rs에 기술된 내용은 다음의 컴파일과 정적 라이브러리를 만드는 명령어와 동일하다.
+// $ cc asm/context.S -c -fPIC -o asm/context.o
+// $ ar crus asm/libcountext.a asm/context.o
+//
+// cc는 C 컴파일러이며 일반적으로 gcc 또는 clang이 이용되며, C 및 assembly code를 컴파일하는데 사용된다.
+// -c flag는 올바른 컴파일 단계 후에 중지하고 linking을 수행하지 않도록 컴파일러에 지시함
+// -fPIC flag는 위치 독립적 코드를 생성하도록 컴파일러에 지시함. PIC는 런타임시 로드되는 공유 라이브러리에 사용되므로
+// 컴파일 시 메모리 위치를 알 수 없음.
+// -o [arg] flag는 출력 파일의 이름과 경로를 지정함.
+//
+// ar은 정적 라이브러리 작성이나 정적 라이브러리로부터의 파일 추출을 위한 명령어.
+// ar은 archive 명령이며 아카이브 파일을 생성, 수정 및 추출하는데 사용됨.
+//
+// 표 6-6 ar 명령어의 옵션 목록
+// c flag는 아카이버에게 새 아카이브 파일을 생성하도록 지시
+// r flag는 아카이버에게 아카이브에서 지정된 객체 파일을 교체하도록 지시. 책장에 파일을 삽입.
+//   이미 같은 이름의 파일이 존재하면 치환(overwrite)
+// u flag는 아카이버가 이미 아카이브에 있는 버전보다 최신 버전인 경우에만 아카이브에 있는 개체 파일을 교체하도록 지시
+// s flag는 아카이버에게 아카이브의 기호 테이블을 업데이트하도록 지시
+// d flag는 기호 테이블(색인)을 책장에 써넣음. 색인이 존재하는 경우에는 업데이트
+// 즉, asm/context.o를 책이라고 생각하면 asm/libcontext.a는 책장이며, ar은
+// asm.libcontext.a라는 책장에 파일(책)을 넣고 빼기 위한 명령어다. 오래전 software는 천공 카드(punch card)라는
+// 물리적 종이에 기록되어 책과 같은 형태였다. 그리고 그 책(천공 카드)은 책장에 관리되었으며 software 관리는 실제
+// 책장 관리와 동일했다.
+//
+// build.rs에서는 작성된 asm/libcontext.a를 link해서 컴파일하도록 지정한다.
+fn src_green_rs() {
+    use nix::sys::mman::{mprotect, ProtFlags};
+    use rand;
+    use std::alloc::{alloc, dealloc, Layout};
+    use std::collections::{HashMap, HashSet, LinkedList};
+    use std::ffi::c_void;
+    use std::ptr;
+}
+
+/// 6.2.2 context
+/// context는 process의 실행 상태에 관한 정보이며, 가장 중요한 정보는 register 값이다. [그림 6-4]에 이번 구현에서
+/// 저장하는 context와 CPU 및 메모리의 관계를 나타냈다.
+///
+/// text영역은 실행 명령이 놓인 메모리 영역. 그림에서는 set_context라는 context를 저장하는 함수가 호출되면 caller
+/// 저장 register는 컴파일러가 출력한 코드에 따라 stack으로 회피된다. 한편 callee 저장 register는 회피되지 않으므로
+/// set_context 함수가 heap상의 확보된 영역에 저장된다.
+/// (set_context 호출시: caller 저장 register -> stack으로 회피, callee 저장 register -> 회피불가. heap에 저장됨)
+/// ret 명령에서의 반환 위치 주소를 나타내는 link 주소인 x30 register와 stack pointer를 나타내는 sp register도
+/// 마찬가지로 저장된다. 그러면 다른 process 실행 후 context에 저장된 register 정보를 복원하고 ret 명령어로 반환하면
+/// set_context 함수를 호출한 다음 주소(x30 register가 지정된 주소)에서 실행을 재개함.
+// fn f() {
+//
+// }

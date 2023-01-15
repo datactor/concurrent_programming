@@ -4,6 +4,8 @@ mod ch03_synchronous_processing01;
 mod ch04_bugs_and_problems;
 mod ch05_async_programming;
 mod ch06_multitask;
+mod build;
+mod green;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
